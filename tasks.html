@@ -392,9 +392,21 @@ function hasMySubtask(t) {
   return !!(t.subtasks && t.subtasks.some(s => s.assigned_to_me));
 }
 
+// toISOString() converts to UTC first, which is a day behind local
+// time for anyone in a positive UTC offset (e.g. Taipei, UTC+8) for
+// part of the day — build the date string from local fields instead
+// so "today" actually means today wherever the member is.
+function localTodayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function filterForView(view) {
   if (view === 'today') {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localTodayStr();
     return allTasks.filter(t => t.occurrence_date === todayStr);
   }
   if (view === 'mine') {
