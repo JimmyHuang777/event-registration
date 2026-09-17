@@ -66,6 +66,30 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// A template with no rows in task_template_groups is public. A
+// template WITH rows there is only visible to someone who belongs to
+// at least one of those groups. Reused by every write action so a
+// group restriction can't be bypassed by calling an action directly
+// with a known instance_id.
+async function isTemplateVisible(templateId: string, existingUser: { id: string } | null) {
+  const { data: groupLinks } = await supabase
+    .from("task_template_groups")
+    .select("group_id")
+    .eq("template_id", templateId);
+
+  if (!groupLinks || groupLinks.length === 0) return true; // public template
+
+  if (!existingUser) return false;
+
+  const { data: myGroups } = await supabase
+    .from("task_group_members")
+    .select("group_id")
+    .eq("user_id", existingUser.id);
+
+  const myGroupIds = new Set((myGroups || []).map((r: any) => r.group_id));
+  return groupLinks.some((r: any) => myGroupIds.has(r.group_id));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -184,7 +208,6 @@ serve(async (req) => {
         const result = visibleInstances.map((inst: any) => {
           const forInstance = assignments.filter((a) => a.instance_id === inst.id);
           const mine = existingUser ? forInstance.find((a) => a.user_id === existingUser.id) : null;
-          const iAmAssignee = !!mine;
 
           const templateSubtasks = subtaskTemplates.filter((s) => s.template_id === inst.template_id);
           const subtasks = templateSubtasks.map((s) => {
@@ -212,7 +235,10 @@ serve(async (req) => {
             assignees: forInstance.map((a) => ({ display_name: a.users?.display_name, picture: a.users?.line_picture_url })),
             my_assignment_id: mine ? mine.id : null,
             my_assignment_status: mine ? mine.status : null,
-            can_claim_subtasks: iAmAssignee,
+            // Any visible task's subtasks can be claimed directly — this
+            // list only ever contains tasks the caller is allowed to see,
+            // so visibility (already enforced above) is the only real gate.
+            can_claim_subtasks: true,
             subtasks,
           };
         });
@@ -250,6 +276,10 @@ serve(async (req) => {
           .eq("id", instance_id)
           .maybeSingle();
         if (!inst) return json({ error: "This task no longer exists." }, 404);
+
+        if (!(await isTemplateVisible((inst as any).template_id, existingUser))) {
+          return json({ error: "這項工作不開放給您的群組。This task isn't open to your group." }, 403);
+        }
 
         const { data: currentAssignments } = await supabase
           .from("task_assignments")
@@ -387,20 +417,42 @@ serve(async (req) => {
       // ---- Take one subtask on one instance ----
       case "claim_subtask": {
         const { instance_id, subtask_template_id } = body;
-        if (!existingUser) return json({ error: "No profile found." }, 404);
         if (!instance_id || !subtask_template_id) {
           return json({ error: "Missing instance_id or subtask_template_id." }, 400);
         }
 
-        const { data: myAssignment } = await supabase
-          .from("task_assignments")
-          .select("id")
-          .eq("instance_id", instance_id)
-          .eq("user_id", existingUser.id)
-          .neq("status", "cancelled")
+        // Subtasks no longer require claiming the parent job first —
+        // just visibility (same group rule as the job itself). A
+        // first-time claimer gets a minimal profile from their LINE
+        // name, same as claiming a job does with fuller details.
+        let claimerUser = existingUser;
+        if (!claimerUser) {
+          const { data: newUserRow, error: newUserErr } = await supabase
+            .from("users")
+            .upsert(
+              {
+                line_user_id: lineUserId,
+                display_name: claims.name || "LINE User",
+                line_picture_url: claims.picture || null,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "line_user_id" }
+            )
+            .select()
+            .single();
+          if (newUserErr) return json({ error: newUserErr.message }, 400);
+          claimerUser = newUserRow;
+        }
+
+        const { data: inst } = await supabase
+          .from("task_instances")
+          .select("id, template_id")
+          .eq("id", instance_id)
           .maybeSingle();
-        if (!myAssignment) {
-          return json({ error: "只有已認領這項任務的人可以認領子項目。Only someone assigned to this task can take its subtasks." }, 403);
+        if (!inst) return json({ error: "This task no longer exists." }, 404);
+
+        if (!(await isTemplateVisible((inst as any).template_id, claimerUser))) {
+          return json({ error: "這項工作不開放給您的群組。This task isn't open to your group." }, 403);
         }
 
         const { data: existingRow } = await supabase
@@ -411,7 +463,7 @@ serve(async (req) => {
           .maybeSingle();
 
         if (existingRow) {
-          if (existingRow.assigned_user_id === existingUser.id) {
+          if (existingRow.assigned_user_id === claimerUser.id) {
             return json({ ok: true }); // already mine — idempotent
           }
           return json({ error: "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
@@ -419,7 +471,7 @@ serve(async (req) => {
 
         const { error } = await supabase
           .from("task_subtask_completions")
-          .insert({ instance_id, subtask_template_id, assigned_user_id: existingUser.id, status: "taken" });
+          .insert({ instance_id, subtask_template_id, assigned_user_id: claimerUser.id, status: "taken" });
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
       }

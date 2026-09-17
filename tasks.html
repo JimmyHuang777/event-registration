@@ -41,9 +41,6 @@
   }
   .tab-btn.active { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
 
-  .mine-toggle { display: flex; align-items: center; gap: 8px; padding: 12px 20px 4px; font-size: 13px; color: var(--ink-soft); }
-  .mine-toggle input { width: 16px; height: 16px; }
-
   .task-list { padding: 12px 20px 24px; flex: 1; }
   .date-heading { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
   .date-heading:first-child { margin-top: 0; }
@@ -135,31 +132,6 @@
   .claim-modal-actions .cancel-btn { background: var(--field-bg); color: var(--ink); }
 
   #main-screen { display: none; flex-direction: column; flex: 1; }
-
-  /* ---- Calendar view ---- */
-  .calendar-wrap { padding: 14px 20px 0; display: none; }
-  .calendar-wrap.active { display: block; }
-  .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .cal-nav button {
-    width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--field-bg); background: var(--paper);
-    font-size: 15px; cursor: pointer; color: var(--ink);
-  }
-  .cal-nav .cal-month-label { font-size: 14.5px; font-weight: 700; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-  .cal-dow { text-align: center; font-size: 11px; color: var(--ink-soft); padding: 4px 0; font-weight: 600; }
-  .cal-day {
-    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    border-radius: 8px; font-size: 12.5px; cursor: pointer; position: relative; background: var(--field-bg);
-    color: var(--ink); border: 1.5px solid transparent;
-  }
-  .cal-day.empty { background: none; cursor: default; }
-  .cal-day.today { border-color: var(--line-green); }
-  .cal-day.selected { background: var(--line-green); color: white; }
-  .cal-day .cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--line-green-dark); margin-top: 2px; }
-  .cal-day.selected .cal-dot { background: white; }
-  .cal-day.mine-dot .cal-dot { background: var(--error); }
-  .cal-day.selected.mine-dot .cal-dot { background: white; }
-  .cal-selected-heading { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 16px 0 8px; }
 </style>
 </head>
 <body>
@@ -181,7 +153,7 @@
   <div id="main-screen">
     <div class="header">
       <h1>任務認領 Task Roster</h1>
-      <p>瀏覽並認領每日／每週／每月的工作</p>
+      <p>未認領（您所屬群組）／我的任務／一週內的任務</p>
     </div>
 
     <div class="profile-row">
@@ -190,25 +162,9 @@
     </div>
 
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-recurrence="daily">每日 Daily</button>
-      <button type="button" class="tab-btn" data-recurrence="weekly">每週 Weekly</button>
-      <button type="button" class="tab-btn" data-recurrence="monthly">每月 Monthly</button>
-      <button type="button" class="tab-btn" data-recurrence="once">單次 One-time</button>
-      <button type="button" class="tab-btn" data-recurrence="calendar">月曆 Calendar</button>
-    </div>
-
-    <label class="mine-toggle" id="mine-toggle-row">
-      <input type="checkbox" id="mine-only-checkbox">
-      只顯示我已認領的 Show only my tasks
-    </label>
-
-    <div class="calendar-wrap" id="calendar-wrap">
-      <div class="cal-nav">
-        <button type="button" id="cal-prev-btn">‹</button>
-        <span class="cal-month-label" id="cal-month-label"></span>
-        <button type="button" id="cal-next-btn">›</button>
-      </div>
-      <div class="cal-grid" id="cal-grid"></div>
+      <button type="button" class="tab-btn active" data-view="unassigned">未認領 Unassigned</button>
+      <button type="button" class="tab-btn" data-view="mine">我的任務 My Job</button>
+      <button type="button" class="tab-btn" data-view="week">一週內 This Week</button>
     </div>
 
     <div class="task-list" id="task-list"></div>
@@ -269,15 +225,8 @@ function showScreen(name) {
 let idToken = null;
 let lineProfile = null;
 let allTasks = [];
-let activeTab = 'daily';
-let mineOnly = false;
+let activeView = 'unassigned'; // 'unassigned' | 'mine' | 'week'
 let pendingClaimInstanceId = null;
-
-// Calendar view state
-let calendarCursor = new Date(); // day-of-month is irrelevant, only y/m used
-let calendarTasks = [];
-let calendarLoadedKey = null; // "YYYY-MM" already fetched, to avoid refetching
-let selectedCalendarDate = null;
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -375,14 +324,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    activeTab = btn.dataset.recurrence;
+    activeView = btn.dataset.view;
     renderTasks();
   });
-});
-
-document.getElementById('mine-only-checkbox').addEventListener('change', (e) => {
-  mineOnly = e.target.checked;
-  renderTasks();
 });
 
 function formatDateHeading(dateStr) {
@@ -495,25 +439,45 @@ function bindTaskListEvents(listEl) {
   });
 }
 
+function hasUnclaimedSubtask(t) {
+  return !!(t.subtasks && t.subtasks.some(s => s.status === 'unassigned'));
+}
+function hasMySubtask(t) {
+  return !!(t.subtasks && t.subtasks.some(s => s.assigned_to_me));
+}
+
+function filterForView(view) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const weekEnd = new Date();
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndStr = weekEnd.toISOString().slice(0, 10);
+
+  if (view === 'unassigned') {
+    return allTasks.filter(t => (t.slots_filled < t.slots_total) || hasUnclaimedSubtask(t));
+  }
+  if (view === 'mine') {
+    return allTasks.filter(t => !!t.my_assignment_id || hasMySubtask(t));
+  }
+  // 'week'
+  return allTasks.filter(t =>
+    (!!t.my_assignment_id || hasMySubtask(t)) &&
+    t.occurrence_date >= todayStr && t.occurrence_date <= weekEndStr
+  );
+}
+
+const emptyNoteByView = {
+  unassigned: '目前沒有未認領的任務。',
+  mine: '您目前沒有已認領的任務。',
+  week: '未來一週內沒有您已認領的任務。',
+};
+
 function renderTasks() {
   const listEl = document.getElementById('task-list');
-  const calWrap = document.getElementById('calendar-wrap');
-  const mineToggleRow = document.getElementById('mine-toggle-row');
 
-  if (activeTab === 'calendar') {
-    calWrap.classList.add('active');
-    mineToggleRow.style.display = 'none';
-    loadCalendarMonth();
-    return;
-  }
-  calWrap.classList.remove('active');
-  mineToggleRow.style.display = 'flex';
-
-  let filtered = allTasks.filter(t => t.recurrence === activeTab);
-  if (mineOnly) filtered = filtered.filter(t => !!t.my_assignment_id);
+  const filtered = filterForView(activeView);
 
   if (filtered.length === 0) {
-    listEl.innerHTML = `<div class="empty-note">目前沒有${mineOnly ? '已認領的' : ''}任務。</div>`;
+    listEl.innerHTML = `<div class="empty-note">${emptyNoteByView[activeView] || '目前沒有任務。'}</div>`;
     return;
   }
 
@@ -531,16 +495,11 @@ function renderTasks() {
   bindTaskListEvents(listEl);
 }
 
-// Subtask/task status actions all just refetch the affected views —
-// simpler and safer than hand-patching every derived field (status
-// badges, "誰認領了" labels, slot counts) locally.
+// Subtask/task status actions all just refetch and re-render — simpler
+// and safer than hand-patching every derived field (status badges,
+// "誰認領了" labels, slot counts) locally.
 async function refreshAfterChange() {
-  calendarLoadedKey = null;
-  if (activeTab === 'calendar') {
-    await loadCalendarMonth();
-  } else {
-    await loadTasks();
-  }
+  await loadTasks();
 }
 
 async function claimSubtask(instanceId, subtaskTemplateId) {
@@ -603,7 +562,6 @@ document.getElementById('claim-modal-confirm').addEventListener('click', async (
   try {
     await callApi('claim_task', { instance_id: pendingClaimInstanceId, display_name: name, phone: phone || null });
     document.getElementById('claim-modal-overlay').classList.remove('show');
-    calendarLoadedKey = null; // force a refresh next time calendar is shown
     await loadTasks();
   } catch (err) {
     alert('認領失敗，請稍後再試。\n' + err.message);
@@ -617,97 +575,10 @@ async function releaseTask(assignmentId) {
   if (!confirm('確定要取消認領這項任務嗎？')) return;
   try {
     await callApi('release_task', { assignment_id: assignmentId });
-    calendarLoadedKey = null;
     await loadTasks();
   } catch (err) {
     alert('取消失敗，請稍後再試。\n' + err.message);
   }
-}
-
-/* ---------- Calendar view ---------- */
-
-function monthKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1); }
-function daysInMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
-function toDateStr(y, m, day) {
-  return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-}
-
-async function loadCalendarMonth() {
-  const key = monthKey(calendarCursor);
-  if (calendarLoadedKey !== key) {
-    const y = calendarCursor.getFullYear(), m = calendarCursor.getMonth();
-    const from = toDateStr(y, m, 1);
-    const { tasks } = await callApi('list_tasks', { from_date: from, days: daysInMonth(calendarCursor) - 1 });
-    calendarTasks = tasks || [];
-    calendarLoadedKey = key;
-  }
-  renderCalendarGrid();
-  renderCalendarDayList();
-}
-
-document.getElementById('cal-prev-btn').addEventListener('click', () => {
-  calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);
-  selectedCalendarDate = null;
-  loadCalendarMonth();
-});
-document.getElementById('cal-next-btn').addEventListener('click', () => {
-  calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1);
-  selectedCalendarDate = null;
-  loadCalendarMonth();
-});
-
-function renderCalendarGrid() {
-  const y = calendarCursor.getFullYear(), m = calendarCursor.getMonth();
-  document.getElementById('cal-month-label').textContent = calendarCursor.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' });
-
-  const firstDow = new Date(y, m, 1).getDay();
-  const totalDays = daysInMonth(calendarCursor);
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  const byDate = {};
-  calendarTasks.forEach(t => {
-    if (!byDate[t.occurrence_date]) byDate[t.occurrence_date] = [];
-    byDate[t.occurrence_date].push(t);
-  });
-
-  const dowLabels = ['日','一','二','三','四','五','六'].map(d => `<div class="cal-dow">${d}</div>`).join('');
-  const blanks = Array.from({ length: firstDow }, () => `<div class="cal-day empty"></div>`).join('');
-  const cells = Array.from({ length: totalDays }, (_, i) => {
-    const day = i + 1;
-    const dateStr = toDateStr(y, m, day);
-    const dayTasks = byDate[dateStr] || [];
-    const hasMine = dayTasks.some(t => !!t.my_assignment_id);
-    const classes = ['cal-day'];
-    if (dateStr === todayStr) classes.push('today');
-    if (dateStr === selectedCalendarDate) classes.push('selected');
-    if (hasMine) classes.push('mine-dot');
-    return `<div class="${classes.join(' ')}" data-date="${dateStr}">${day}${dayTasks.length ? '<span class="cal-dot"></span>' : ''}</div>`;
-  }).join('');
-
-  document.getElementById('cal-grid').innerHTML = dowLabels + blanks + cells;
-
-  document.querySelectorAll('#cal-grid .cal-day:not(.empty)').forEach(cell => {
-    cell.addEventListener('click', () => {
-      selectedCalendarDate = cell.dataset.date === selectedCalendarDate ? null : cell.dataset.date;
-      renderCalendarGrid();
-      renderCalendarDayList();
-    });
-  });
-}
-
-function renderCalendarDayList() {
-  const listEl = document.getElementById('task-list');
-  if (!selectedCalendarDate) {
-    listEl.innerHTML = `<div class="empty-note">點選上方日期以查看該天的任務。</div>`;
-    return;
-  }
-  const dayTasks = calendarTasks.filter(t => t.occurrence_date === selectedCalendarDate);
-  if (dayTasks.length === 0) {
-    listEl.innerHTML = `<div class="cal-selected-heading">${formatDateHeading(selectedCalendarDate)}</div><div class="empty-note">這天沒有任務。</div>`;
-    return;
-  }
-  listEl.innerHTML = `<div class="cal-selected-heading">${formatDateHeading(selectedCalendarDate)}</div>${dayTasks.map(taskCardHTML).join('')}`;
-  bindTaskListEvents(listEl);
 }
 
 initLiff();
