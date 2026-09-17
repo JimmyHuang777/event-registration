@@ -126,7 +126,7 @@ serve(async (req) => {
 
           const { data: subs, error: subErr } = await supabase
             .from("task_subtask_completions")
-            .select("id, subtask_template_id, instance_id, assigned_user_id, status, users ( display_name )")
+            .select("id, subtask_template_id, instance_id, assigned_user_id, status, users!assigned_user_id ( display_name )")
             .in("instance_id", instanceIds);
           if (subErr) return json({ error: subErr.message }, 400);
           subtaskState = subs || [];
