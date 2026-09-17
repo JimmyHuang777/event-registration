@@ -72,6 +72,31 @@
   .profile-card .name { font-size: 15px; font-weight: 600; }
   .profile-card .sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
 
+  .section-title {
+    font-size: 13px; font-weight: 700; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.03em;
+    margin: 28px 20px 10px;
+  }
+
+  #existing-section { padding-top: 4px; }
+
+  .existing-card {
+    background: var(--field-bg); border-radius: 12px; margin: 0 20px 10px; padding: 14px 16px;
+  }
+  .existing-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .existing-card-name { font-size: 15px; font-weight: 700; }
+  .existing-card-sub { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+  .existing-card-details { font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6; }
+  .existing-card-actions { display: flex; gap: 16px; margin-top: 10px; }
+
+  .existing-status-badge {
+    font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+  }
+  .existing-status-badge.pending { background: #FBF3E4; color: #B7791F; }
+  .existing-status-badge.confirmed { background: #E9F1FA; color: #2563A8; }
+  .existing-status-badge.checked_in { background: #E4F8EC; color: var(--line-green-dark); }
+  .existing-status-badge.cancelled { background: #FBEAE8; color: var(--error); }
+
   .status-banner {
     margin: 20px 20px 0;
     padding: 12px 14px;
@@ -87,9 +112,30 @@
   .status-banner.checked_in { background: #E4F8EC; color: var(--line-green-dark); }
   .status-banner.cancelled { background: #FBEAE8; color: var(--error); }
 
-  form { padding: 24px 20px; flex: 1; }
+  form { padding: 0 0 24px; flex: 1; }
 
-  .field { margin-bottom: 18px; }
+  .attendee-block {
+    margin: 0 20px 16px; padding: 16px; border: 1.5px solid var(--field-bg); border-radius: 12px;
+  }
+  .attendee-block-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+  }
+  .attendee-block-title { font-size: 13.5px; font-weight: 700; color: var(--ink-soft); }
+  .remove-attendee-btn {
+    background: none; border: none; color: var(--error); font-size: 12.5px;
+    text-decoration: underline; cursor: pointer; padding: 4px;
+  }
+
+  .add-attendee-btn {
+    display: block; width: calc(100% - 40px); margin: 0 20px 22px; padding: 12px;
+    background: none; border: 1.5px dashed #C7CAD1; border-radius: 12px;
+    color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .add-attendee-btn:hover { border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .field { margin-bottom: 14px; padding: 0 20px; }
+  .attendee-block .field { padding: 0; margin-bottom: 14px; }
+
   .field label { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
   .field .hint { font-size: 12px; color: var(--ink-soft); font-weight: 400; margin-left: 4px; }
 
@@ -103,7 +149,7 @@
     outline: none; border-color: var(--line-green); background: var(--paper);
   }
 
-  .field textarea { resize: vertical; min-height: 70px; }
+  .field textarea { resize: vertical; min-height: 60px; }
 
   .field select {
     width: 100%; padding: 13px 14px; border: 1.5px solid transparent;
@@ -134,26 +180,27 @@
   .privacy-note {
     font-size: 12px; color: var(--ink-soft); line-height: 1.6;
     background: var(--field-bg); border-radius: 10px; padding: 12px 14px;
-    margin-bottom: 18px;
+    margin: 0 20px 18px;
   }
 
   .submit-btn {
-    width: 100%; padding: 15px; background: var(--line-green); color: white;
+    display: block; width: calc(100% - 40px); margin: 0 20px; padding: 15px;
+    background: var(--line-green); color: white;
     border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
-    cursor: pointer; margin-top: 4px;
+    cursor: pointer;
   }
 
   .submit-btn:hover { background: var(--line-green-dark); }
   .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
 
   .secondary-actions {
-    display: flex; justify-content: space-between; margin-top: 16px;
+    display: flex; justify-content: center; margin: 16px 20px 0;
     font-size: 13px;
   }
 
   .link-btn {
     background: none; border: none; cursor: pointer; font-size: 13px;
-    text-decoration: underline; padding: 6px 2px;
+    text-decoration: underline; padding: 6px 2px; font-family: inherit;
   }
 
   .link-btn.cancel { color: var(--ink-soft); }
@@ -220,43 +267,33 @@
       </div>
     </div>
 
-    <div class="status-banner" id="status-banner"></div>
+    <div id="existing-section" style="display:none;">
+      <div class="section-title">您已登記的人員 Your registrations</div>
+      <div id="existing-list"></div>
+    </div>
 
     <form id="reg-form">
-      <div class="field" id="field-name">
-        <label>姓名 Full name</label>
-        <input type="text" id="input-name" required>
-        <div class="field-error">請輸入姓名</div>
-      </div>
+      <div class="section-title" id="add-section-title">新增報名人員 Add attendees</div>
+      <p style="font-size:12.5px; color:var(--ink-soft); margin:-4px 20px 16px; line-height:1.5;">
+        可一次幫多位親友報名，點擊下方「新增一位」即可。
+      </p>
 
-      <div class="field" id="field-phone">
-        <label>手機號碼 Phone <span class="hint">用於報到通知</span></label>
-        <input type="tel" id="input-phone" placeholder="0912-345-678" required>
-        <div class="field-error">請輸入正確的手機號碼</div>
-      </div>
+      <div id="attendee-blocks"></div>
 
-      <!-- Event-specific fields (dropdowns / toggle buttons) render here,
-           driven entirely by that event's form_schema in the database. -->
-      <div id="dynamic-fields"></div>
+      <button type="button" class="add-attendee-btn" id="add-attendee-btn">＋ 新增一位 Add another person</button>
 
       <div class="field">
-        <label>Email <span class="hint">選填</span></label>
+        <label>聯絡 Email <span class="hint">選填，用於通知</span></label>
         <input type="email" id="input-email" placeholder="you@example.com">
       </div>
 
-      <div class="field">
-        <label>備註 Notes <span class="hint">選填</span></label>
-        <textarea id="input-notes" placeholder="飲食限制、特殊需求等"></textarea>
-      </div>
-
       <div class="privacy-note">
-        您的資料僅用於本次活動的報名與報到聯繫，僅主辦單位與工作人員可查閱。如需刪除您的資料，請使用下方「刪除我的資料」按鈕。
+        您所提交的資料僅用於本次活動的報名與報到聯繫，僅主辦單位與工作人員可查閱。您可隨時編輯或取消已登記人員的報名，或使用下方按鈕刪除您在本系統中的所有資料。
       </div>
 
       <button type="submit" class="submit-btn" id="submit-btn">送出報名 Submit</button>
 
       <div class="secondary-actions" id="secondary-actions" style="display:none;">
-        <button type="button" class="link-btn cancel" id="cancel-btn">取消報名</button>
         <button type="button" class="link-btn delete" id="delete-btn">刪除我的所有資料</button>
       </div>
     </form>
@@ -314,6 +351,12 @@ let lineProfile = null;
 let currentEventId = null;
 let currentEventSlug = null;
 let currentFormSchema = [];
+let existingRegistrations = [];
+let blockCounter = 0;
+
+const STATUS_LABELS = {
+  pending: '待確認', confirmed: '已確認', checked_in: '已報到', cancelled: '已取消',
+};
 
 function getEventSlugFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -349,6 +392,307 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+/* ---------- Per-event dynamic custom fields (namespaced per attendee block) ---------- */
+
+function dynamicFieldsHTML(key) {
+  return currentFormSchema.map(field => {
+    const fid = 'att-field-' + key + '-' + field.id;
+    const iid = 'att-input-' + key + '-' + field.id;
+    if (field.type === 'select') {
+      const options = field.options.map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('');
+      return `
+        <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="select" data-required="${!!field.required}">
+          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+          <select id="${iid}">
+            <option value="">請選擇…</option>
+            ${options}
+          </select>
+          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
+        </div>`;
+    }
+    if (field.type === 'toggle') {
+      const opts = (field.options && field.options.length === 2) ? field.options : ['需要', '不需要'];
+      return `
+        <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="toggle" data-required="${!!field.required}" data-value="">
+          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+          <div class="toggle-group">
+            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[0])}">${escapeHtml(opts[0])}</button>
+            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[1])}">${escapeHtml(opts[1])}</button>
+          </div>
+          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
+        </div>`;
+    }
+    // fallback: plain text field for any future 'text' type fields
+    return `
+      <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="text" data-required="${!!field.required}">
+        <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+        <input type="text" id="${iid}">
+        <div class="field-error">請填寫${escapeHtml(field.label)}</div>
+      </div>`;
+  }).join('');
+}
+
+// One delegated listener handles every toggle button, in every
+// attendee block (new or edit-mode), present now or added later.
+document.getElementById('app').addEventListener('click', (e) => {
+  const btn = e.target.closest('.toggle-btn');
+  if (!btn) return;
+  const fieldEl = btn.closest('[data-field-type="toggle"]');
+  if (!fieldEl) return;
+  fieldEl.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  fieldEl.dataset.value = btn.dataset.value;
+  fieldEl.classList.remove('has-error');
+});
+
+function collectAttendeeData(key) {
+  const extra = {};
+  currentFormSchema.forEach(field => {
+    if (field.type === 'toggle') {
+      const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
+      extra[field.id] = fieldEl ? (fieldEl.dataset.value || '') : '';
+    } else {
+      const input = document.getElementById('att-input-' + key + '-' + field.id);
+      extra[field.id] = input ? input.value.trim() : '';
+    }
+  });
+  return {
+    name: document.getElementById('att-name-' + key).value.trim(),
+    phone: document.getElementById('att-phone-' + key).value.trim(),
+    notes: document.getElementById('att-notes-' + key).value.trim() || null,
+    extra_data: extra,
+  };
+}
+
+function prefillAttendeeBlock(key, data) {
+  document.getElementById('att-name-' + key).value = data.attendee_name || '';
+  document.getElementById('att-phone-' + key).value = data.attendee_phone || '';
+  const notesEl = document.getElementById('att-notes-' + key);
+  if (notesEl) notesEl.value = data.notes || '';
+
+  const extraData = data.extra_data || {};
+  currentFormSchema.forEach(field => {
+    const value = extraData[field.id];
+    if (value === undefined || value === null || value === '') return;
+    if (field.type === 'select') {
+      const sel = document.getElementById('att-input-' + key + '-' + field.id);
+      if (sel) sel.value = value;
+    } else if (field.type === 'toggle') {
+      const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
+      if (!fieldEl) return;
+      fieldEl.dataset.value = value;
+      fieldEl.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('selected', b.dataset.value === value));
+    } else {
+      const input = document.getElementById('att-input-' + key + '-' + field.id);
+      if (input) input.value = value;
+    }
+  });
+}
+
+function validateAttendeeBlock(key) {
+  let valid = true;
+  const nameInput = document.getElementById('att-name-' + key);
+  const phoneInput = document.getElementById('att-phone-' + key);
+  const phonePattern = /^[0-9\-+ ]{8,15}$/;
+
+  const name = nameInput.value.trim();
+  nameInput.closest('.field').classList.toggle('has-error', !name);
+  if (!name) valid = false;
+
+  const phone = phoneInput.value.trim();
+  const phoneValid = phonePattern.test(phone);
+  phoneInput.closest('.field').classList.toggle('has-error', !phoneValid);
+  if (!phoneValid) valid = false;
+
+  currentFormSchema.forEach(field => {
+    if (!field.required) return;
+    const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
+    if (!fieldEl) return;
+    let hasValue = false;
+    if (field.type === 'toggle') {
+      hasValue = !!fieldEl.dataset.value;
+    } else {
+      const input = document.getElementById('att-input-' + key + '-' + field.id);
+      hasValue = input && input.value.trim() !== '';
+    }
+    fieldEl.classList.toggle('has-error', !hasValue);
+    if (!hasValue) valid = false;
+  });
+
+  return valid;
+}
+
+/* ---------- "Add attendees" repeatable blocks ---------- */
+
+function attendeeBlockHTML(key, prefillName) {
+  return `
+    <div class="attendee-block" data-block-key="${key}">
+      <div class="attendee-block-header">
+        <span class="attendee-block-title">Person</span>
+        <button type="button" class="remove-attendee-btn" style="display:none;">移除 Remove</button>
+      </div>
+      <div class="field">
+        <label>姓名 Full name</label>
+        <input type="text" id="att-name-${key}" value="${escapeHtml(prefillName || '')}" required>
+        <div class="field-error">請輸入姓名</div>
+      </div>
+      <div class="field">
+        <label>手機號碼 Phone</label>
+        <input type="tel" id="att-phone-${key}" placeholder="0912-345-678" required>
+        <div class="field-error">請輸入正確的手機號碼</div>
+      </div>
+      <div id="att-dynamic-${key}"></div>
+      <div class="field">
+        <label>備註 Notes <span class="hint">選填</span></label>
+        <textarea id="att-notes-${key}" placeholder="飲食限制、特殊需求等"></textarea>
+      </div>
+    </div>`;
+}
+
+function updateAttendeeBlockChrome() {
+  const blocks = document.querySelectorAll('#attendee-blocks .attendee-block');
+  blocks.forEach((b, i) => {
+    b.querySelector('.attendee-block-title').textContent = '第 ' + (i + 1) + ' 位 Person ' + (i + 1);
+    const removeBtn = b.querySelector('.remove-attendee-btn');
+    removeBtn.style.display = blocks.length > 1 ? 'inline-block' : 'none';
+  });
+}
+
+function addAttendeeBlock(prefillName) {
+  const key = 'new' + (blockCounter++);
+  const wrap = document.createElement('div');
+  wrap.innerHTML = attendeeBlockHTML(key, prefillName || '');
+  const blockEl = wrap.firstElementChild;
+  document.getElementById('attendee-blocks').appendChild(blockEl);
+  document.getElementById('att-dynamic-' + key).innerHTML = dynamicFieldsHTML(key);
+  updateAttendeeBlockChrome();
+  return key;
+}
+
+document.getElementById('attendee-blocks').addEventListener('click', (e) => {
+  const btn = e.target.closest('.remove-attendee-btn');
+  if (!btn) return;
+  btn.closest('.attendee-block').remove();
+  updateAttendeeBlockChrome();
+});
+
+document.getElementById('add-attendee-btn').addEventListener('click', () => addAttendeeBlock(''));
+
+/* ---------- Existing registrations (already-submitted attendees) ---------- */
+
+function existingCardHTML(r) {
+  const details = currentFormSchema.map(f => {
+    const v = (r.extra_data || {})[f.id];
+    return v ? escapeHtml(f.label) + '：' + escapeHtml(v) : '';
+  }).filter(Boolean).join('　');
+
+  return `
+    <div class="existing-card" data-reg-id="${r.id}">
+      <div class="existing-card-top">
+        <div class="existing-card-name">${escapeHtml(r.attendee_name)}</div>
+        <span class="existing-status-badge ${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
+      </div>
+      <div class="existing-card-sub">${escapeHtml(r.attendee_phone || '')}</div>
+      ${details ? `<div class="existing-card-details">${details}</div>` : ''}
+      <div class="existing-card-actions">
+        <button type="button" class="link-btn edit-existing-btn" data-reg-id="${r.id}">編輯</button>
+        <button type="button" class="link-btn cancel cancel-existing-btn" data-reg-id="${r.id}">取消報名</button>
+      </div>
+    </div>`;
+}
+
+function renderExistingList() {
+  const listEl = document.getElementById('existing-list');
+  const section = document.getElementById('existing-section');
+  if (!existingRegistrations || existingRegistrations.length === 0) {
+    section.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+  section.style.display = 'block';
+  listEl.innerHTML = existingRegistrations.map(r => existingCardHTML(r)).join('');
+}
+
+function startEditExisting(regId) {
+  const reg = existingRegistrations.find(r => r.id === regId);
+  if (!reg) return;
+  const key = 'e' + regId.replace(/-/g, '');
+  const cardEl = document.querySelector('.existing-card[data-reg-id="' + regId + '"]');
+  if (!cardEl) return;
+
+  cardEl.innerHTML = `
+    <div class="field">
+      <label>姓名 Full name</label>
+      <input type="text" id="att-name-${key}" required>
+      <div class="field-error">請輸入姓名</div>
+    </div>
+    <div class="field">
+      <label>手機號碼 Phone</label>
+      <input type="tel" id="att-phone-${key}" required>
+      <div class="field-error">請輸入正確的手機號碼</div>
+    </div>
+    <div id="att-dynamic-${key}"></div>
+    <div class="field">
+      <label>備註 Notes <span class="hint">選填</span></label>
+      <textarea id="att-notes-${key}"></textarea>
+    </div>
+    <div class="existing-card-actions">
+      <button type="button" class="submit-btn save-edit-btn" data-reg-id="${regId}" data-key="${key}" style="width:auto; padding:10px 16px; font-size:14px;">儲存 Save</button>
+      <button type="button" class="link-btn cancel-edit-btn" data-reg-id="${regId}">取消編輯</button>
+    </div>`;
+
+  document.getElementById('att-dynamic-' + key).innerHTML = dynamicFieldsHTML(key);
+  prefillAttendeeBlock(key, reg);
+}
+
+document.getElementById('existing-list').addEventListener('click', async (e) => {
+  const editBtn = e.target.closest('.edit-existing-btn');
+  if (editBtn) { startEditExisting(editBtn.dataset.regId); return; }
+
+  const cancelEditBtn = e.target.closest('.cancel-edit-btn');
+  if (cancelEditBtn) { renderExistingList(); return; }
+
+  const saveBtn = e.target.closest('.save-edit-btn');
+  if (saveBtn) {
+    const regId = saveBtn.dataset.regId;
+    const key = saveBtn.dataset.key;
+    if (!validateAttendeeBlock(key)) return;
+    const data = collectAttendeeData(key);
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = '儲存中…';
+    try {
+      const { registration } = await callApi('update_attendee', {
+        registration_id: regId, name: data.name, phone: data.phone,
+        extra_data: data.extra_data, notes: data.notes,
+      });
+      const idx = existingRegistrations.findIndex(r => r.id === regId);
+      if (idx >= 0) existingRegistrations[idx] = registration;
+      renderExistingList();
+    } catch (err) {
+      alert('儲存失敗，請稍後再試。\n' + err.message);
+      saveBtn.disabled = false;
+      saveBtn.textContent = '儲存 Save';
+    }
+    return;
+  }
+
+  const cancelBtn = e.target.closest('.cancel-existing-btn');
+  if (cancelBtn) {
+    if (!confirm('確定要取消這位的報名嗎？')) return;
+    const regId = cancelBtn.dataset.regId;
+    try {
+      await callApi('cancel_registration', { registration_id: regId });
+      existingRegistrations = existingRegistrations.filter(r => r.id !== regId);
+      renderExistingList();
+    } catch (err) {
+      alert('取消失敗，請稍後再試。\n' + err.message);
+    }
+  }
+});
+
+/* ---------- LIFF boot flow ---------- */
+
 async function initLiff() {
   try {
     setLoadingText('步驟 1/6：讀取活動資訊…');
@@ -356,8 +700,6 @@ async function initLiff() {
     if (currentEventSlug) {
       try { sessionStorage.setItem('lastEventSlug', currentEventSlug); } catch (e) {}
     } else {
-      // Fallback: recover from a previous successful load on this device,
-      // in case a login redirect ever drops the URL parameter.
       try { currentEventSlug = sessionStorage.getItem('lastEventSlug'); } catch (e) {}
     }
     if (!currentEventSlug) {
@@ -367,8 +709,6 @@ async function initLiff() {
       return;
     }
 
-    // Look up this event's own dedicated LIFF ID — this is a public,
-    // non-PII read, so it's fine to query before any login happens.
     const { data: ev, error: evError } = await withTimeout(
       supabasePublic
         .from('events')
@@ -402,7 +742,7 @@ async function initLiff() {
       descEl.textContent = ev.description;
       descEl.style.display = 'block';
     }
-    renderDynamicFields(currentFormSchema);
+    addAttendeeBlock('');
 
     setLoadingText('步驟 2/6：liff.init()…');
     await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
@@ -414,8 +754,6 @@ async function initLiff() {
       return;
     }
 
-    // Requires the LIFF app's Scopes to include "openid" (not just "profile") —
-    // this is set automatically when the admin dashboard creates each event's LIFF app.
     setLoadingText('步驟 4/6：取得 ID Token…');
     idToken = liff.getIDToken();
     lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
@@ -430,7 +768,6 @@ async function initLiff() {
     setLoadingText('步驟 5/6：載入個人資料…');
     document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
     document.getElementById('profile-name').textContent = lineProfile.displayName;
-    document.getElementById('input-name').value = lineProfile.displayName;
 
     setLoadingText('步驟 6/6：載入報名資料…');
     await withTimeout(loadExistingRegistration(), 10000, 'loadExistingRegistration()');
@@ -459,183 +796,61 @@ document.getElementById('relogin-btn').addEventListener('click', () => {
 });
 
 async function loadExistingRegistration() {
-  // Profile/registration data DOES contain PII, so this part still
-  // goes through the Edge Function (identity-verified), unlike the
-  // public event lookup above.
-  const { user, registration } = await callApi('get_my_data', { event_id: currentEventId });
+  const { user, registrations } = await callApi('get_my_data', { event_id: currentEventId });
+  existingRegistrations = registrations || [];
 
   if (user) {
-    document.getElementById('input-name').value = user.display_name || lineProfile.displayName;
-    document.getElementById('input-phone').value = user.phone || '';
     document.getElementById('input-email').value = user.email || '';
-  }
-
-  if (registration) {
-    document.getElementById('input-notes').value = registration.notes || '';
-    showStatusBanner(registration.status);
     document.getElementById('secondary-actions').style.display = 'flex';
-    document.getElementById('submit-btn').textContent = '更新報名資料 Update';
-    prefillDynamicFields(registration.extra_data || {});
   }
+
+  renderExistingList();
+
+  // Prefill the very first attendee block's name from the LINE profile —
+  // it was created empty (pre-login) in initLiff(), so 'new0' is safe here.
+  const firstNameInput = document.getElementById('att-name-new0');
+  if (firstNameInput && !firstNameInput.value) firstNameInput.value = lineProfile.displayName;
 }
 
-function renderDynamicFields(schema) {
-  const container = document.getElementById('dynamic-fields');
-  container.innerHTML = schema.map(field => {
-    if (field.type === 'select') {
-      const options = field.options.map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('');
-      return `
-        <div class="field" id="field-${field.id}" data-field-id="${field.id}" data-field-type="select" data-required="${!!field.required}">
-          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
-          <select id="input-${field.id}">
-            <option value="">請選擇…</option>
-            ${options}
-          </select>
-          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
-        </div>`;
-    }
-    if (field.type === 'toggle') {
-      const opts = (field.options && field.options.length === 2) ? field.options : ['需要', '不需要'];
-      return `
-        <div class="field" id="field-${field.id}" data-field-id="${field.id}" data-field-type="toggle" data-required="${!!field.required}" data-value="">
-          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
-          <div class="toggle-group">
-            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[0])}">${escapeHtml(opts[0])}</button>
-            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[1])}">${escapeHtml(opts[1])}</button>
-          </div>
-          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
-        </div>`;
-    }
-    // fallback: plain text field for any future 'text' type fields
-    return `
-      <div class="field" id="field-${field.id}" data-field-id="${field.id}" data-field-type="text" data-required="${!!field.required}">
-        <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
-        <input type="text" id="input-${field.id}">
-        <div class="field-error">請填寫${escapeHtml(field.label)}</div>
-      </div>`;
-  }).join('');
-
-  // Wire up toggle button clicks
-  container.querySelectorAll('[data-field-type="toggle"]').forEach(fieldEl => {
-    fieldEl.querySelectorAll('.toggle-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        fieldEl.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        fieldEl.dataset.value = btn.dataset.value;
-        fieldEl.classList.remove('has-error');
-      });
-    });
-  });
-}
-
-function prefillDynamicFields(extraData) {
-  currentFormSchema.forEach(field => {
-    const value = extraData[field.id];
-    if (value === undefined || value === null || value === '') return;
-
-    if (field.type === 'select') {
-      const sel = document.getElementById('input-' + field.id);
-      if (sel) sel.value = value;
-    } else if (field.type === 'toggle') {
-      const fieldEl = document.getElementById('field-' + field.id);
-      if (!fieldEl) return;
-      fieldEl.dataset.value = value;
-      fieldEl.querySelectorAll('.toggle-btn').forEach(b => {
-        b.classList.toggle('selected', b.dataset.value === value);
-      });
-    } else {
-      const input = document.getElementById('input-' + field.id);
-      if (input) input.value = value;
-    }
-  });
-}
-
-function collectDynamicFieldValues() {
-  const result = {};
-  currentFormSchema.forEach(field => {
-    if (field.type === 'toggle') {
-      const fieldEl = document.getElementById('field-' + field.id);
-      result[field.id] = fieldEl ? (fieldEl.dataset.value || '') : '';
-    } else {
-      const input = document.getElementById('input-' + field.id);
-      result[field.id] = input ? input.value.trim() : '';
-    }
-  });
-  return result;
-}
-
-function validateDynamicFields() {
-  let valid = true;
-  currentFormSchema.forEach(field => {
-    if (!field.required) return;
-    const fieldEl = document.getElementById('field-' + field.id);
-    if (!fieldEl) return;
-
-    let hasValue = false;
-    if (field.type === 'toggle') {
-      hasValue = !!fieldEl.dataset.value;
-    } else {
-      const input = document.getElementById('input-' + field.id);
-      hasValue = input && input.value.trim() !== '';
-    }
-
-    fieldEl.classList.toggle('has-error', !hasValue);
-    if (!hasValue) valid = false;
-  });
-  return valid;
-}
-
-function showStatusBanner(status) {
-  const banner = document.getElementById('status-banner');
-  const labels = {
-    pending: '目前狀態：待確認',
-    confirmed: '目前狀態：已確認',
-    checked_in: '目前狀態：已報到',
-    cancelled: '目前狀態：已取消報名',
-  };
-  banner.textContent = labels[status] || '';
-  banner.className = 'status-banner show ' + status;
-}
-
-function validate() {
-  let valid = true;
-  const name = document.getElementById('input-name').value.trim();
-  const phone = document.getElementById('input-phone').value.trim();
-  const phonePattern = /^[0-9\-+ ]{8,15}$/;
-
-  document.getElementById('field-name').classList.toggle('has-error', !name);
-  if (!name) valid = false;
-
-  const phoneValid = phonePattern.test(phone);
-  document.getElementById('field-phone').classList.toggle('has-error', !phoneValid);
-  if (!phoneValid) valid = false;
-
-  return valid;
-}
+/* ---------- Submit: register one or more new attendees at once ---------- */
 
 document.getElementById('reg-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const baseValid = validate();
-  const dynamicValid = validateDynamicFields();
-  if (!baseValid || !dynamicValid) return;
+
+  const blocks = Array.from(document.querySelectorAll('#attendee-blocks .attendee-block'));
+  if (blocks.length === 0) {
+    alert('請至少新增一位報名人員。');
+    return;
+  }
+
+  let allValid = true;
+  const attendees = [];
+  blocks.forEach(b => {
+    const key = b.dataset.blockKey;
+    if (!validateAttendeeBlock(key)) allValid = false;
+    attendees.push(collectAttendeeData(key));
+  });
+  if (!allValid) return;
 
   const submitBtn = document.getElementById('submit-btn');
   submitBtn.disabled = true;
   submitBtn.textContent = '送出中…';
 
   try {
-    await callApi('register_for_event', {
+    const { registrations } = await callApi('register_for_event', {
       event_id: currentEventId,
-      display_name: document.getElementById('input-name').value.trim(),
-      phone: document.getElementById('input-phone').value.trim(),
+      display_name: lineProfile.displayName,
       email: document.getElementById('input-email').value.trim() || null,
-      notes: document.getElementById('input-notes').value.trim() || null,
-      extra_data: collectDynamicFieldValues(),
+      attendees,
     });
+
+    existingRegistrations = existingRegistrations.concat(registrations || []);
 
     document.getElementById('success-title').textContent = '報名成功！';
     document.getElementById('success-message').textContent =
-      '我們已收到您的資料，確認訊息將會透過 LINE 通知您。';
+      attendees.length > 1
+        ? `已為 ${attendees.length} 位完成報名，確認訊息將會透過 LINE 通知您。`
+        : '我們已收到您的資料，確認訊息將會透過 LINE 通知您。';
     showScreen('success');
   } catch (err) {
     submitBtn.disabled = false;
@@ -644,20 +859,8 @@ document.getElementById('reg-form').addEventListener('submit', async (e) => {
   }
 });
 
-document.getElementById('cancel-btn').addEventListener('click', async () => {
-  if (!confirm('確定要取消報名嗎？')) return;
-  try {
-    await callApi('cancel_registration', { event_id: currentEventId });
-    document.getElementById('success-title').textContent = '已取消報名';
-    document.getElementById('success-message').textContent = '您的報名已成功取消。';
-    showScreen('success');
-  } catch (err) {
-    alert('取消失敗，請稍後再試。\n' + err.message);
-  }
-});
-
 document.getElementById('delete-btn').addEventListener('click', async () => {
-  if (!confirm('這會刪除您在本系統中的所有資料（包含所有活動的報名紀錄），且無法復原。確定要繼續嗎？')) return;
+  if (!confirm('這會刪除您在本系統中的所有資料（包含您幫所有人登記的所有報名紀錄），且無法復原。確定要繼續嗎？')) return;
   try {
     await callApi('delete_profile', {});
     document.getElementById('success-title').textContent = '資料已刪除';
