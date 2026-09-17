@@ -1,0 +1,24 @@
+name: Deploy Supabase Edge Function
+
+# Only runs when the function's own code changes, so pushing frontend
+# changes to this same repo doesn't trigger an unnecessary redeploy.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/registrant-api/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy registrant-api Edge Function
+        run: supabase functions deploy registrant-api --project-ref ixzvbyxhzttvnheivsoc
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
