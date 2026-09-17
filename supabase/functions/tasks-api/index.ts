@@ -108,8 +108,47 @@ serve(async (req) => {
 
         if (instErr) return json({ error: instErr.message }, 400);
 
-        const instanceIds = (instances || []).map((i: any) => i.id);
-        const templateIds = [...new Set((instances || []).map((i: any) => i.template_id))];
+        // ---- Group visibility ----
+        // A template with no rows in task_template_groups is public
+        // (visible to everyone). A template WITH rows there is only
+        // visible to someone who belongs to at least one of those
+        // groups.
+        const allTemplateIds = [...new Set((instances || []).map((i: any) => i.template_id))];
+        let visibleTemplateIds = new Set(allTemplateIds);
+
+        if (allTemplateIds.length > 0) {
+          const { data: templateGroups, error: tgErr } = await supabase
+            .from("task_template_groups")
+            .select("template_id, group_id")
+            .in("template_id", allTemplateIds);
+          if (tgErr) return json({ error: tgErr.message }, 400);
+
+          const restrictedTemplateIds = new Set((templateGroups || []).map((r: any) => r.template_id));
+          if (restrictedTemplateIds.size > 0) {
+            let myGroupIds = new Set<string>();
+            if (existingUser) {
+              const { data: myGroups, error: mgErr } = await supabase
+                .from("task_group_members")
+                .select("group_id")
+                .eq("user_id", existingUser.id);
+              if (mgErr) return json({ error: mgErr.message }, 400);
+              myGroupIds = new Set((myGroups || []).map((r: any) => r.group_id));
+            }
+
+            visibleTemplateIds = new Set(
+              allTemplateIds.filter((tid: string) => {
+                if (!restrictedTemplateIds.has(tid)) return true; // public template
+                const groupsForTemplate = (templateGroups || []).filter((r: any) => r.template_id === tid);
+                return groupsForTemplate.some((r: any) => myGroupIds.has(r.group_id));
+              })
+            );
+          }
+        }
+
+        const visibleInstances = (instances || []).filter((i: any) => visibleTemplateIds.has(i.template_id));
+
+        const instanceIds = visibleInstances.map((i: any) => i.id);
+        const templateIds = [...new Set(visibleInstances.map((i: any) => i.template_id))];
 
         let assignments: any[] = [];
         let subtaskTemplates: any[] = [];
@@ -142,7 +181,7 @@ serve(async (req) => {
           subtaskTemplates = subs || [];
         }
 
-        const result = (instances || []).map((inst: any) => {
+        const result = visibleInstances.map((inst: any) => {
           const forInstance = assignments.filter((a) => a.instance_id === inst.id);
           const mine = existingUser ? forInstance.find((a) => a.user_id === existingUser.id) : null;
           const iAmAssignee = !!mine;
