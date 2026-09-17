@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>活動報名 Event Registration</title>
+<meta property="og:title" content="活動報名 Event Registration">
+<meta property="og:description" content="請點此完成報名">
+<meta property="og:type" content="website">
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --field-bg: #F3F4F6;
+    --error: #E0453C;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    background: var(--line-green);
+    color: white;
+    padding: 28px 20px 40px;
+  }
+
+  .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  .header .event-meta { margin: 8px 0 0; font-size: 13.5px; opacity: 0.92; line-height: 1.5; }
+
+  .profile-card {
+    background: var(--paper);
+    border-radius: var(--radius);
+    margin: -24px 16px 0;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    position: relative;
+    z-index: 2;
+  }
+
+  .profile-card img {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--field-bg); object-fit: cover; flex-shrink: 0;
+  }
+
+  .profile-card .name { font-size: 15px; font-weight: 600; }
+  .profile-card .sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  .status-banner {
+    margin: 20px 20px 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    display: none;
+  }
+
+  .status-banner.show { display: block; }
+  .status-banner.confirmed { background: #E9F1FA; color: #2563A8; }
+  .status-banner.pending { background: #FBF3E4; color: #B7791F; }
+  .status-banner.checked_in { background: #E4F8EC; color: var(--line-green-dark); }
+  .status-banner.cancelled { background: #FBEAE8; color: var(--error); }
+
+  form { padding: 24px 20px; flex: 1; }
+
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 12px; color: var(--ink-soft); font-weight: 400; margin-left: 4px; }
+
+  .field input, .field textarea {
+    width: 100%; padding: 13px 14px; border: 1.5px solid transparent;
+    background: var(--field-bg); border-radius: 10px; font-size: 15px;
+    font-family: inherit; color: var(--ink);
+  }
+
+  .field input:focus, .field textarea:focus {
+    outline: none; border-color: var(--line-green); background: var(--paper);
+  }
+
+  .field textarea { resize: vertical; min-height: 70px; }
+
+  .field select {
+    width: 100%; padding: 13px 14px; border: 1.5px solid transparent;
+    background: var(--field-bg); border-radius: 10px; font-size: 15px;
+    font-family: inherit; color: var(--ink); appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236B6F76'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; background-size: 18px;
+  }
+
+  .field select:focus { outline: none; border-color: var(--line-green); background-color: var(--paper); }
+
+  .toggle-group { display: flex; gap: 8px; }
+
+  .toggle-btn {
+    flex: 1; padding: 12px 10px; border-radius: 10px; border: 1.5px solid var(--field-bg);
+    background: var(--field-bg); color: var(--ink-soft); font-size: 14.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; text-align: center;
+  }
+
+  .toggle-btn.selected {
+    background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark);
+  }
+
+  .field.has-error input { border-color: var(--error); background: #FDEDEC; }
+  .field-error { color: var(--error); font-size: 12px; margin-top: 5px; display: none; }
+  .field.has-error .field-error { display: block; }
+
+  .privacy-note {
+    font-size: 12px; color: var(--ink-soft); line-height: 1.6;
+    background: var(--field-bg); border-radius: 10px; padding: 12px 14px;
+    margin-bottom: 18px;
+  }
+
+  .submit-btn {
+    width: 100%; padding: 15px; background: var(--line-green); color: white;
+    border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+    cursor: pointer; margin-top: 4px;
+  }
+
+  .submit-btn:hover { background: var(--line-green-dark); }
+  .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+
+  .secondary-actions {
+    display: flex; justify-content: space-between; margin-top: 16px;
+    font-size: 13px;
+  }
+
+  .link-btn {
+    background: none; border: none; cursor: pointer; font-size: 13px;
+    text-decoration: underline; padding: 6px 2px;
+  }
+
+  .link-btn.cancel { color: var(--ink-soft); }
+  .link-btn.delete { color: var(--error); }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+
+  .state-screen.active { display: flex; }
+
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--field-bg);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white;
+    font-size: 28px; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .icon-circle.success { background: var(--line-green); }
+  .icon-circle.error { background: var(--error); }
+
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 300px; line-height: 1.5; white-space: pre-wrap; }
+
+  #form-screen { display: none; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle error">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn" style="margin-top:20px; max-width:220px;">重新登入 Re-login</button>
+  </div>
+
+  <div id="form-screen">
+    <div class="header">
+      <h1 id="event-name">活動報名 Event Registration</h1>
+      <p class="event-meta" id="event-meta"></p>
+      <p class="event-meta" id="event-description" style="margin-top:10px; display:none;"></p>
+    </div>
+
+    <div class="profile-card">
+      <img id="profile-pic" src="" alt="">
+      <div>
+        <div class="name" id="profile-name">—</div>
+        <div class="sub">已透過 LINE 驗證身份</div>
+      </div>
+    </div>
+
+    <div class="status-banner" id="status-banner"></div>
+
+    <form id="reg-form">
+      <div class="field" id="field-name">
+        <label>姓名 Full name</label>
+        <input type="text" id="input-name" required>
+        <div class="field-error">請輸入姓名</div>
+      </div>
+
+      <div class="field" id="field-phone">
+        <label>手機號碼 Phone <span class="hint">用於報到通知</span></label>
+        <input type="tel" id="input-phone" placeholder="0912-345-678" required>
+        <div class="field-error">請輸入正確的手機號碼</div>
+      </div>
+
+      <!-- Event-specific fields (dropdowns / toggle buttons) render here,
+           driven entirely by that event's form_schema in the database. -->
+      <div id="dynamic-fields"></div>
+
+      <div class="field">
+        <label>Email <span class="hint">選填</span></label>
+        <input type="email" id="input-email" placeholder="you@example.com">
+      </div>
+
+      <div class="field">
+        <label>備註 Notes <span class="hint">選填</span></label>
+        <textarea id="input-notes" placeholder="飲食限制、特殊需求等"></textarea>
+      </div>
+
+      <div class="privacy-note">
+        您的資料僅用於本次活動的報名與報到聯繫，僅主辦單位與工作人員可查閱。如需刪除您的資料，請使用下方「刪除我的資料」按鈕。
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">送出報名 Submit</button>
+
+      <div class="secondary-actions" id="secondary-actions" style="display:none;">
+        <button type="button" class="link-btn cancel" id="cancel-btn">取消報名</button>
+        <button type="button" class="link-btn delete" id="delete-btn">刪除我的所有資料</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="success-screen" class="state-screen">
+    <div class="icon-circle success">✓</div>
+    <h2 id="success-title">報名成功！</h2>
+    <p id="success-message">我們已收到您的資料，確認訊息將會透過 LINE 通知您。</p>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG — replace before deploying
+   ========================================================= */
+// LIFF_ID is no longer hardcoded — each event now has its own LIFF app
+// (created automatically by the admin dashboard), so we look up the
+// correct one for this event before calling liff.init().
+let LIFF_ID = null;
+// Your deployed Edge Function URL, e.g.
+// https://YOUR_PROJECT.functions.supabase.co/registrant-api
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/registrant-api';
+
+// Used ONLY for reading public event info (name/date/location) — the
+// "public can read active events" RLS policy is what makes this safe.
+// This client never touches users/registrations; all of that goes
+// through the Edge Function above.
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  form: document.getElementById('form-screen'),
+  success: document.getElementById('success-screen'),
+};
+
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'form') {
+      el.style.display = key === name ? 'flex' : 'none';
+    } else {
+      el.classList.toggle('active', key === name);
+    }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let currentEventId = null;
+let currentEventSlug = null;
+let currentFormSchema = [];
+
+function getEventSlugFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('event');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('步驟 1/6：讀取活動資訊…');
+    currentEventSlug = getEventSlugFromUrl();
+    if (currentEventSlug) {
+      try { sessionStorage.setItem('lastEventSlug', currentEventSlug); } catch (e) {}
+    } else {
+      // Fallback: recover from a previous successful load on this device,
+      // in case a login redirect ever drops the URL parameter.
+      try { currentEventSlug = sessionStorage.getItem('lastEventSlug'); } catch (e) {}
+    }
+    if (!currentEventSlug) {
+      document.getElementById('error-message').textContent =
+        '此連結缺少活動資訊。請點擊下方按鈕重試，或請主辦單位重新提供完整報名連結。';
+      showScreen('error');
+      return;
+    }
+
+    // Look up this event's own dedicated LIFF ID — this is a public,
+    // non-PII read, so it's fine to query before any login happens.
+    const { data: ev, error: evError } = await withTimeout(
+      supabasePublic
+        .from('events')
+        .select('id, name, event_date, location, description, form_schema, liff_id')
+        .eq('slug', currentEventSlug)
+        .eq('is_active', true)
+        .single(),
+      10000, 'event lookup'
+    );
+
+    if (evError || !ev) {
+      document.getElementById('error-message').textContent = '找不到此活動，請確認連結是否正確。';
+      showScreen('error');
+      return;
+    }
+    if (!ev.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此活動尚未設定 LINE 連結，請聯繫主辦單位。';
+      showScreen('error');
+      return;
+    }
+
+    currentEventId = ev.id;
+    currentFormSchema = ev.form_schema || [];
+    LIFF_ID = ev.liff_id;
+    document.getElementById('event-name').textContent = ev.name;
+    document.getElementById('event-meta').textContent =
+      [ev.event_date, ev.location].filter(Boolean).join('　');
+    if (ev.description) {
+      const descEl = document.getElementById('event-description');
+      descEl.textContent = ev.description;
+      descEl.style.display = 'block';
+    }
+    renderDynamicFields(currentFormSchema);
+
+    setLoadingText('步驟 2/6：liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    setLoadingText('步驟 3/6：檢查登入狀態…');
+    if (!liff.isLoggedIn()) {
+      setLoadingText('步驟 3/6：導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    // Requires the LIFF app's Scopes to include "openid" (not just "profile") —
+    // this is set automatically when the admin dashboard creates each event's LIFF app.
+    setLoadingText('步驟 4/6：取得 ID Token…');
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    setLoadingText('步驟 5/6：載入個人資料…');
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+    document.getElementById('input-name').value = lineProfile.displayName;
+
+    setLoadingText('步驟 6/6：載入報名資料…');
+    await withTimeout(loadExistingRegistration(), 10000, 'loadExistingRegistration()');
+    showScreen('form');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent =
+        '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent =
+        '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try {
+    liff.logout();
+  } catch (e) {
+    // ignore — logout can fail if session already invalid, that's fine
+  }
+  window.location.reload();
+});
+
+async function loadExistingRegistration() {
+  // Profile/registration data DOES contain PII, so this part still
+  // goes through the Edge Function (identity-verified), unlike the
+  // public event lookup above.
+  const { user, registration } = await callApi('get_my_data', { event_id: currentEventId });
+
+  if (user) {
+    document.getElementById('input-name').value = user.display_name || lineProfile.displayName;
+    document.getElementById('input-phone').value = user.phone || '';
+    document.getElementById('input-email').value = user.email || '';
+  }
+
+  if (registration) {
+    document.getElementById('input-notes').value = registration.notes || '';
+    showStatusBanner(registration.status);
+    document.getElementById('secondary-actions').style.display = 'flex';
+    document.getElementById('submit-btn').textContent = '更新報名資料 Update';
+    prefillDynamicFields(registration.extra_data || {});
+  }
+}
+
+function renderDynamicFields(schema) {
+  const container = document.getElementById('dynamic-fields');
+  container.innerHTML = schema.map(field => {
+    if (field.type === 'select') {
+      const options = field.options.map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('');
+      return `
+        <div class="field" id="field-${field.id}" data-field-id="${field.id}" data-field-type="select" data-required="${!!field.required}">
+          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+          <select id="input-${field.id}">
+            <option value="">請選擇…</option>
+            ${options}
+          </select>
+          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
+        </div>`;
+    }
+    if (field.type === 'toggle') {
+      const opts = (field.options && field.options.length === 2) ? field.options : ['需要', '不需要'];
+      return `
+        <div class="field" id="field-${field.id}" data-field-id="${field.id}" data-field-type="toggle" data-required="${!!field.required}" data-value="">
+          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+          <div class="toggle-group">
+            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[0])}">${escapeHtml(opts[0])}</button>
+            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[1])}">${escapeHtml(opts[1])}</button>
+          </div>
+          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
+        </div>`;
+    }
+    // fallback: plain text field for any future 'text' type fields
+    return `
+      <div class="field" id="field-${field.id}" data-field-id="${field.id}" data-field-type="text" data-required="${!!field.required}">
+        <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+        <input type="text" id="input-${field.id}">
+        <div class="field-error">請填寫${escapeHtml(field.label)}</div>
+      </div>`;
+  }).join('');
+
+  // Wire up toggle button clicks
+  container.querySelectorAll('[data-field-type="toggle"]').forEach(fieldEl => {
+    fieldEl.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        fieldEl.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        fieldEl.dataset.value = btn.dataset.value;
+        fieldEl.classList.remove('has-error');
+      });
+    });
+  });
+}
+
+function prefillDynamicFields(extraData) {
+  currentFormSchema.forEach(field => {
+    const value = extraData[field.id];
+    if (value === undefined || value === null || value === '') return;
+
+    if (field.type === 'select') {
+      const sel = document.getElementById('input-' + field.id);
+      if (sel) sel.value = value;
+    } else if (field.type === 'toggle') {
+      const fieldEl = document.getElementById('field-' + field.id);
+      if (!fieldEl) return;
+      fieldEl.dataset.value = value;
+      fieldEl.querySelectorAll('.toggle-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.value === value);
+      });
+    } else {
+      const input = document.getElementById('input-' + field.id);
+      if (input) input.value = value;
+    }
+  });
+}
+
+function collectDynamicFieldValues() {
+  const result = {};
+  currentFormSchema.forEach(field => {
+    if (field.type === 'toggle') {
+      const fieldEl = document.getElementById('field-' + field.id);
+      result[field.id] = fieldEl ? (fieldEl.dataset.value || '') : '';
+    } else {
+      const input = document.getElementById('input-' + field.id);
+      result[field.id] = input ? input.value.trim() : '';
+    }
+  });
+  return result;
+}
+
+function validateDynamicFields() {
+  let valid = true;
+  currentFormSchema.forEach(field => {
+    if (!field.required) return;
+    const fieldEl = document.getElementById('field-' + field.id);
+    if (!fieldEl) return;
+
+    let hasValue = false;
+    if (field.type === 'toggle') {
+      hasValue = !!fieldEl.dataset.value;
+    } else {
+      const input = document.getElementById('input-' + field.id);
+      hasValue = input && input.value.trim() !== '';
+    }
+
+    fieldEl.classList.toggle('has-error', !hasValue);
+    if (!hasValue) valid = false;
+  });
+  return valid;
+}
+
+function showStatusBanner(status) {
+  const banner = document.getElementById('status-banner');
+  const labels = {
+    pending: '目前狀態：待確認',
+    confirmed: '目前狀態：已確認',
+    checked_in: '目前狀態：已報到',
+    cancelled: '目前狀態：已取消報名',
+  };
+  banner.textContent = labels[status] || '';
+  banner.className = 'status-banner show ' + status;
+}
+
+function validate() {
+  let valid = true;
+  const name = document.getElementById('input-name').value.trim();
+  const phone = document.getElementById('input-phone').value.trim();
+  const phonePattern = /^[0-9\-+ ]{8,15}$/;
+
+  document.getElementById('field-name').classList.toggle('has-error', !name);
+  if (!name) valid = false;
+
+  const phoneValid = phonePattern.test(phone);
+  document.getElementById('field-phone').classList.toggle('has-error', !phoneValid);
+  if (!phoneValid) valid = false;
+
+  return valid;
+}
+
+document.getElementById('reg-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const baseValid = validate();
+  const dynamicValid = validateDynamicFields();
+  if (!baseValid || !dynamicValid) return;
+
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '送出中…';
+
+  try {
+    await callApi('register_for_event', {
+      event_id: currentEventId,
+      display_name: document.getElementById('input-name').value.trim(),
+      phone: document.getElementById('input-phone').value.trim(),
+      email: document.getElementById('input-email').value.trim() || null,
+      notes: document.getElementById('input-notes').value.trim() || null,
+      extra_data: collectDynamicFieldValues(),
+    });
+
+    document.getElementById('success-title').textContent = '報名成功！';
+    document.getElementById('success-message').textContent =
+      '我們已收到您的資料，確認訊息將會透過 LINE 通知您。';
+    showScreen('success');
+  } catch (err) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '送出報名 Submit';
+    alert('報名失敗，請稍後再試。\n' + err.message);
+  }
+});
+
+document.getElementById('cancel-btn').addEventListener('click', async () => {
+  if (!confirm('確定要取消報名嗎？')) return;
+  try {
+    await callApi('cancel_registration', { event_id: currentEventId });
+    document.getElementById('success-title').textContent = '已取消報名';
+    document.getElementById('success-message').textContent = '您的報名已成功取消。';
+    showScreen('success');
+  } catch (err) {
+    alert('取消失敗，請稍後再試。\n' + err.message);
+  }
+});
+
+document.getElementById('delete-btn').addEventListener('click', async () => {
+  if (!confirm('這會刪除您在本系統中的所有資料（包含所有活動的報名紀錄），且無法復原。確定要繼續嗎？')) return;
+  try {
+    await callApi('delete_profile', {});
+    document.getElementById('success-title').textContent = '資料已刪除';
+    document.getElementById('success-message').textContent = '您的所有個人資料已從系統中移除。';
+    showScreen('success');
+  } catch (err) {
+    alert('刪除失敗，請稍後再試。\n' + err.message);
+  }
+});
+
+initLiff();
+</script>
+
+</body>
+</html>
