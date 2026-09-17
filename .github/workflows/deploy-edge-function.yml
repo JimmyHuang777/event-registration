@@ -1,12 +1,13 @@
-name: Deploy Supabase Edge Function
+name: Deploy Supabase Edge Functions
 
-# Only runs when the function's own code changes, so pushing frontend
+# Runs whenever either function's code changes, so pushing frontend
 # changes to this same repo doesn't trigger an unnecessary redeploy.
 on:
   push:
     branches: [main]
     paths:
       - 'supabase/functions/registrant-api/**'
+      - 'supabase/functions/tasks-api/**'
 
 jobs:
   deploy:
@@ -20,5 +21,10 @@ jobs:
 
       - name: Deploy registrant-api Edge Function
         run: supabase functions deploy registrant-api --project-ref ixzvbyxhzttvnheivsoc
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy tasks-api Edge Function
+        run: supabase functions deploy tasks-api --project-ref ixzvbyxhzttvnheivsoc
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

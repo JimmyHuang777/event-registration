@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>任務認領 Task Roster</title>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --field-bg: #F3F4F6;
+    --error: #E0453C;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--paper); display: flex; flex-direction: column; }
+  .header { background: var(--line-green); color: white; padding: 24px 20px 20px; }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 13px; opacity: 0.92; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--field-bg); }
+  .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--field-bg); object-fit: cover; }
+  .profile-row .name { font-size: 13.5px; font-weight: 600; }
+
+  .tabs { display: flex; gap: 6px; padding: 14px 20px 0; }
+  .tab-btn {
+    flex: 1; padding: 9px; border-radius: 20px; border: 1.5px solid var(--field-bg);
+    background: var(--field-bg); color: var(--ink-soft); font-size: 13.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; text-align: center;
+  }
+  .tab-btn.active { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .mine-toggle { display: flex; align-items: center; gap: 8px; padding: 12px 20px 4px; font-size: 13px; color: var(--ink-soft); }
+  .mine-toggle input { width: 16px; height: 16px; }
+
+  .task-list { padding: 12px 20px 24px; flex: 1; }
+  .date-heading { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
+  .date-heading:first-child { margin-top: 0; }
+
+  .task-card {
+    border: 1.5px solid var(--field-bg); border-radius: 12px; padding: 14px; margin-bottom: 10px;
+  }
+  .task-card.mine { border-color: var(--line-green); background: #F3FCF6; }
+  .task-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .task-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 8px; }
+  .task-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .slots-label { font-size: 12.5px; color: var(--ink-soft); }
+  .slots-label.full { color: var(--error); font-weight: 600; }
+  .assignee-names { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+
+  .claim-btn, .release-btn {
+    padding: 8px 16px; border-radius: 20px; border: none; font-size: 13px; font-weight: 700;
+    cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .claim-btn { background: var(--line-green); color: white; }
+  .claim-btn:hover { background: var(--line-green-dark); }
+  .claim-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+  .release-btn { background: var(--field-bg); color: var(--error); }
+
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 40px 20px; }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--field-bg);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 300px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  .claim-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    align-items: flex-end; justify-content: center; z-index: 100;
+  }
+  .claim-modal-overlay.show { display: flex; }
+  .claim-modal { background: var(--paper); border-radius: 16px 16px 0 0; padding: 24px 20px; width: 100%; max-width: 480px; }
+  .claim-modal h3 { margin: 0 0 4px; font-size: 16px; }
+  .claim-modal p { margin: 0 0 16px; font-size: 13px; color: var(--ink-soft); }
+  .claim-modal .field { margin-bottom: 12px; }
+  .claim-modal .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .claim-modal .field input {
+    width: 100%; padding: 11px 12px; border: 1.5px solid var(--field-bg); background: var(--field-bg);
+    border-radius: 8px; font-size: 14.5px; font-family: inherit;
+  }
+  .claim-modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .claim-modal-actions button { flex: 1; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 700; border: none; font-family: inherit; cursor: pointer; }
+  .claim-modal-actions .confirm-btn { background: var(--line-green); color: white; }
+  .claim-modal-actions .cancel-btn { background: var(--field-bg); color: var(--ink); }
+
+  #main-screen { display: none; flex-direction: column; flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <h1>任務認領 Task Roster</h1>
+      <p>瀏覽並認領每日／每週／每月的工作</p>
+    </div>
+
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-recurrence="daily">每日 Daily</button>
+      <button type="button" class="tab-btn" data-recurrence="weekly">每週 Weekly</button>
+      <button type="button" class="tab-btn" data-recurrence="monthly">每月 Monthly</button>
+    </div>
+
+    <label class="mine-toggle">
+      <input type="checkbox" id="mine-only-checkbox">
+      只顯示我已認領的 Show only my tasks
+    </label>
+
+    <div class="task-list" id="task-list"></div>
+  </div>
+
+</div>
+
+<div class="claim-modal-overlay" id="claim-modal-overlay">
+  <div class="claim-modal">
+    <h3>確認認領 Confirm claim</h3>
+    <p id="claim-modal-task-title"></p>
+    <div class="field">
+      <label>姓名 Name</label>
+      <input type="text" id="claim-name">
+    </div>
+    <div class="field">
+      <label>手機號碼 Phone <span style="font-weight:400; color:var(--ink-soft);">用於聯繫</span></label>
+      <input type="tel" id="claim-phone" placeholder="0912-345-678">
+    </div>
+    <div class="claim-modal-actions">
+      <button type="button" class="cancel-btn" id="claim-modal-cancel">取消</button>
+      <button type="button" class="confirm-btn" id="claim-modal-confirm">確認認領 Claim</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+// Create ONE LIFF app for this page in LINE Developers Console
+// (Endpoint URL = wherever this file is deployed), then paste its
+// ID here. Unlike the registration form, this page isn't per-event,
+// so there's no auto-creation flow — just do it once manually.
+const LIFF_ID = 'PASTE_YOUR_TASKS_LIFF_ID_HERE';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/tasks-api';
+/* ========================================================= */
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  main: document.getElementById('main-screen'),
+};
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'main') { el.style.display = key === name ? 'flex' : 'none'; }
+    else { el.classList.toggle('active', key === name); }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let allTasks = [];
+let activeTab = 'daily';
+let mineOnly = false;
+let pendingClaimInstanceId = null;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+    document.getElementById('claim-name').value = lineProfile.displayName;
+
+    await loadTasks();
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+async function loadTasks() {
+  const { tasks } = await callApi('list_tasks', { days: 30 });
+  allTasks = tasks || [];
+  renderTasks();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.recurrence;
+    renderTasks();
+  });
+});
+
+document.getElementById('mine-only-checkbox').addEventListener('change', (e) => {
+  mineOnly = e.target.checked;
+  renderTasks();
+});
+
+function formatDateHeading(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const weekday = ['週日','週一','週二','週三','週四','週五','週六'][d.getDay()];
+  return d.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' }) + '（' + weekday + '）';
+}
+
+function taskCardHTML(t) {
+  const isFull = t.slots_filled >= t.slots_total;
+  const isMine = !!t.my_assignment_id;
+  const names = t.assignees.map(a => escapeHtml(a.display_name || '—')).join('、');
+
+  let actionHTML;
+  if (isMine) {
+    actionHTML = `<button type="button" class="release-btn" data-assignment-id="${t.my_assignment_id}">取消認領</button>`;
+  } else if (isFull) {
+    actionHTML = `<button type="button" class="claim-btn" disabled>已額滿</button>`;
+  } else {
+    actionHTML = `<button type="button" class="claim-btn" data-instance-id="${t.instance_id}" data-title="${escapeHtml(t.title)}">認領 Claim</button>`;
+  }
+
+  return `
+    <div class="task-card ${isMine ? 'mine' : ''}">
+      <div class="task-title">${escapeHtml(t.title)}</div>
+      ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
+      <div class="task-meta">
+        <span class="slots-label ${isFull ? 'full' : ''}">${t.slots_filled} / ${t.slots_total} 人</span>
+        ${actionHTML}
+      </div>
+      ${names ? `<div class="assignee-names">已認領：${names}</div>` : ''}
+    </div>`;
+}
+
+function renderTasks() {
+  const listEl = document.getElementById('task-list');
+  let filtered = allTasks.filter(t => t.recurrence === activeTab);
+  if (mineOnly) filtered = filtered.filter(t => !!t.my_assignment_id);
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div class="empty-note">目前沒有${mineOnly ? '已認領的' : ''}任務。</div>`;
+    return;
+  }
+
+  const byDate = {};
+  filtered.forEach(t => {
+    if (!byDate[t.occurrence_date]) byDate[t.occurrence_date] = [];
+    byDate[t.occurrence_date].push(t);
+  });
+
+  listEl.innerHTML = Object.keys(byDate).sort().map(date => `
+    <div class="date-heading">${formatDateHeading(date)}</div>
+    ${byDate[date].map(taskCardHTML).join('')}
+  `).join('');
+
+  listEl.querySelectorAll('.claim-btn:not(:disabled)').forEach(btn => {
+    btn.addEventListener('click', () => openClaimModal(btn.dataset.instanceId, btn.dataset.title));
+  });
+  listEl.querySelectorAll('.release-btn').forEach(btn => {
+    btn.addEventListener('click', () => releaseTask(btn.dataset.assignmentId));
+  });
+}
+
+function openClaimModal(instanceId, title) {
+  pendingClaimInstanceId = instanceId;
+  document.getElementById('claim-modal-task-title').textContent = title;
+  document.getElementById('claim-modal-overlay').classList.add('show');
+}
+
+document.getElementById('claim-modal-cancel').addEventListener('click', () => {
+  document.getElementById('claim-modal-overlay').classList.remove('show');
+});
+
+document.getElementById('claim-modal-confirm').addEventListener('click', async () => {
+  const name = document.getElementById('claim-name').value.trim();
+  const phone = document.getElementById('claim-phone').value.trim();
+  if (!name) { alert('請輸入姓名。'); return; }
+
+  const confirmBtn = document.getElementById('claim-modal-confirm');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = '送出中…';
+
+  try {
+    await callApi('claim_task', { instance_id: pendingClaimInstanceId, display_name: name, phone: phone || null });
+    document.getElementById('claim-modal-overlay').classList.remove('show');
+    await loadTasks();
+  } catch (err) {
+    alert('認領失敗，請稍後再試。\n' + err.message);
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '確認認領 Claim';
+  }
+});
+
+async function releaseTask(assignmentId) {
+  if (!confirm('確定要取消認領這項任務嗎？')) return;
+  try {
+    await callApi('release_task', { assignment_id: assignmentId });
+    await loadTasks();
+  } catch (err) {
+    alert('取消失敗，請稍後再試。\n' + err.message);
+  }
+}
+
+initLiff();
+</script>
+
+</body>
+</html>
