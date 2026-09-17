@@ -6,14 +6,26 @@
 // verifies it directly with LINE's servers before trusting anything.
 //
 // Actions:
-//   list_tasks    — upcoming task instances in a date range, with
-//                    how many slots are filled and whether the
-//                    caller has claimed each one
-//   claim_task    — claim an open slot on one instance
-//   release_task  — cancel the caller's own claim
+//   list_tasks       — upcoming task instances in a date range, with
+//                       fill status, place, subtask claim/completion
+//                       state, and the caller's own assignment status
+//   claim_task       — claim an open slot on one instance
+//   release_task     — cancel the caller's own claim
+//   complete_task    — mark the caller's own assignment 'completed'
+//                       (requires every subtask on the instance to
+//                       already be 'completed', if it has any)
+//   claim_subtask    — take one subtask on one instance (only for
+//                       someone assigned to that instance)
+//   release_subtask  — give up a subtask the caller took (only if
+//                       not yet marked done)
+//   complete_subtask — mark/unmark one of the caller's own taken
+//                       subtasks as done
 //
 // DEPLOY: this repo's GitHub Actions workflow deploys it automatically
 // on push to supabase/functions/tasks-api/** (same as registrant-api).
+// Deployed with --no-verify-jwt (this function does its own auth via
+// the LINE ID token, so Supabase's gateway-level JWT check must stay
+// off — see the workflow file).
 // =========================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
@@ -80,7 +92,7 @@ serve(async (req) => {
       case "list_tasks": {
         const from = body.from_date || todayStr();
         const toDate = new Date(from);
-        toDate.setDate(toDate.getDate() + (body.days || 30));
+        toDate.setDate(toDate.getDate() + (body.days || 90));
         const to = toDate.toISOString().slice(0, 10);
 
         // Lazily generate any missing instances for this window —
@@ -89,7 +101,7 @@ serve(async (req) => {
 
         const { data: instances, error: instErr } = await supabase
           .from("task_instances")
-          .select("id, occurrence_date, template_id, task_templates ( id, title, description, recurrence, slots_per_instance )")
+          .select("id, occurrence_date, template_id, task_templates ( id, title, description, place, recurrence, slots_per_instance )")
           .gte("occurrence_date", from)
           .lte("occurrence_date", to)
           .order("occurrence_date", { ascending: true });
@@ -97,7 +109,12 @@ serve(async (req) => {
         if (instErr) return json({ error: instErr.message }, 400);
 
         const instanceIds = (instances || []).map((i: any) => i.id);
+        const templateIds = [...new Set((instances || []).map((i: any) => i.template_id))];
+
         let assignments: any[] = [];
+        let subtaskTemplates: any[] = [];
+        let subtaskState: any[] = [];
+
         if (instanceIds.length > 0) {
           const { data: asg, error: asgErr } = await supabase
             .from("task_assignments")
@@ -106,21 +123,58 @@ serve(async (req) => {
             .neq("status", "cancelled");
           if (asgErr) return json({ error: asgErr.message }, 400);
           assignments = asg || [];
+
+          const { data: subs, error: subErr } = await supabase
+            .from("task_subtask_completions")
+            .select("id, subtask_template_id, instance_id, assigned_user_id, status, users ( display_name )")
+            .in("instance_id", instanceIds);
+          if (subErr) return json({ error: subErr.message }, 400);
+          subtaskState = subs || [];
+        }
+
+        if (templateIds.length > 0) {
+          const { data: subs, error: subsErr } = await supabase
+            .from("task_subtask_templates")
+            .select("id, template_id, title, sort_order")
+            .in("template_id", templateIds)
+            .order("sort_order", { ascending: true });
+          if (subsErr) return json({ error: subsErr.message }, 400);
+          subtaskTemplates = subs || [];
         }
 
         const result = (instances || []).map((inst: any) => {
           const forInstance = assignments.filter((a) => a.instance_id === inst.id);
           const mine = existingUser ? forInstance.find((a) => a.user_id === existingUser.id) : null;
+          const iAmAssignee = !!mine;
+
+          const templateSubtasks = subtaskTemplates.filter((s) => s.template_id === inst.template_id);
+          const subtasks = templateSubtasks.map((s) => {
+            const state = subtaskState.find(
+              (c) => c.subtask_template_id === s.id && c.instance_id === inst.id
+            );
+            return {
+              subtask_template_id: s.id,
+              title: s.title,
+              status: state ? state.status : "unassigned", // 'unassigned' | 'taken' | 'completed'
+              assigned_name: state ? state.users?.display_name || null : null,
+              assigned_to_me: !!(state && existingUser && state.assigned_user_id === existingUser.id),
+            };
+          });
+
           return {
             instance_id: inst.id,
             occurrence_date: inst.occurrence_date,
             title: inst.task_templates?.title,
             description: inst.task_templates?.description,
+            place: inst.task_templates?.place || null,
             recurrence: inst.task_templates?.recurrence,
             slots_total: inst.task_templates?.slots_per_instance || 1,
             slots_filled: forInstance.length,
             assignees: forInstance.map((a) => ({ display_name: a.users?.display_name, picture: a.users?.line_picture_url })),
             my_assignment_id: mine ? mine.id : null,
+            my_assignment_status: mine ? mine.status : null,
+            can_claim_subtasks: iAmAssignee,
+            subtasks,
           };
         });
 
@@ -230,6 +284,161 @@ serve(async (req) => {
 
         if (error) return json({ error: error.message }, 400);
         return json({ assignment: data });
+      }
+
+      // ---- Mark the caller's own assignment as completed ----
+      case "complete_task": {
+        const { assignment_id } = body;
+        if (!existingUser) return json({ error: "No profile found." }, 404);
+        if (!assignment_id) return json({ error: "Missing assignment_id." }, 400);
+
+        const { data: existingAsg } = await supabase
+          .from("task_assignments")
+          .select("id, user_id, instance_id, status")
+          .eq("id", assignment_id)
+          .maybeSingle();
+
+        if (!existingAsg || existingAsg.user_id !== existingUser.id) {
+          return json({ error: "You can only complete your own tasks." }, 403);
+        }
+        if (!["claimed", "assigned"].includes(existingAsg.status)) {
+          return json({ error: "This task isn't in a state that can be marked complete." }, 400);
+        }
+
+        // Every subtask on this instance (if it has any) must already
+        // be checked off before the task itself can be completed.
+        const { data: inst } = await supabase
+          .from("task_instances")
+          .select("id, template_id")
+          .eq("id", existingAsg.instance_id)
+          .maybeSingle();
+
+        if (inst) {
+          const { data: subTemplates } = await supabase
+            .from("task_subtask_templates")
+            .select("id")
+            .eq("template_id", (inst as any).template_id);
+
+          if (subTemplates && subTemplates.length > 0) {
+            const { data: doneRows } = await supabase
+              .from("task_subtask_completions")
+              .select("subtask_template_id")
+              .eq("instance_id", existingAsg.instance_id)
+              .eq("status", "completed");
+
+            const doneIds = new Set((doneRows || []).map((r: any) => r.subtask_template_id));
+            const allDone = subTemplates.every((s: any) => doneIds.has(s.id));
+            if (!allDone) {
+              return json({ error: "請先完成所有子項目才能標記此任務完成。Please finish every subtask first." }, 400);
+            }
+          }
+        }
+
+        const { data, error } = await supabase
+          .from("task_assignments")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("id", assignment_id)
+          .select()
+          .single();
+
+        if (error) return json({ error: error.message }, 400);
+        return json({ assignment: data });
+      }
+
+      // ---- Take one subtask on one instance ----
+      case "claim_subtask": {
+        const { instance_id, subtask_template_id } = body;
+        if (!existingUser) return json({ error: "No profile found." }, 404);
+        if (!instance_id || !subtask_template_id) {
+          return json({ error: "Missing instance_id or subtask_template_id." }, 400);
+        }
+
+        const { data: myAssignment } = await supabase
+          .from("task_assignments")
+          .select("id")
+          .eq("instance_id", instance_id)
+          .eq("user_id", existingUser.id)
+          .neq("status", "cancelled")
+          .maybeSingle();
+        if (!myAssignment) {
+          return json({ error: "只有已認領這項任務的人可以認領子項目。Only someone assigned to this task can take its subtasks." }, 403);
+        }
+
+        const { data: existingRow } = await supabase
+          .from("task_subtask_completions")
+          .select("id, assigned_user_id")
+          .eq("instance_id", instance_id)
+          .eq("subtask_template_id", subtask_template_id)
+          .maybeSingle();
+
+        if (existingRow) {
+          if (existingRow.assigned_user_id === existingUser.id) {
+            return json({ ok: true }); // already mine — idempotent
+          }
+          return json({ error: "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
+        }
+
+        const { error } = await supabase
+          .from("task_subtask_completions")
+          .insert({ instance_id, subtask_template_id, assigned_user_id: existingUser.id, status: "taken" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      // ---- Give up a subtask the caller took (must not be done yet) ----
+      case "release_subtask": {
+        const { instance_id, subtask_template_id } = body;
+        if (!existingUser) return json({ error: "No profile found." }, 404);
+        if (!instance_id || !subtask_template_id) {
+          return json({ error: "Missing instance_id or subtask_template_id." }, 400);
+        }
+
+        const { data: existingRow } = await supabase
+          .from("task_subtask_completions")
+          .select("id, assigned_user_id")
+          .eq("instance_id", instance_id)
+          .eq("subtask_template_id", subtask_template_id)
+          .maybeSingle();
+
+        if (!existingRow) return json({ ok: true }); // nothing to release
+        if (existingRow.assigned_user_id !== existingUser.id) {
+          return json({ error: "You can only release a subtask you took yourself." }, 403);
+        }
+
+        const { error } = await supabase.from("task_subtask_completions").delete().eq("id", existingRow.id);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      // ---- Mark/unmark one of the caller's own taken subtasks as done ----
+      case "complete_subtask": {
+        const { instance_id, subtask_template_id, completed } = body;
+        if (!existingUser) return json({ error: "No profile found." }, 404);
+        if (!instance_id || !subtask_template_id) {
+          return json({ error: "Missing instance_id or subtask_template_id." }, 400);
+        }
+
+        const { data: existingRow } = await supabase
+          .from("task_subtask_completions")
+          .select("id, assigned_user_id")
+          .eq("instance_id", instance_id)
+          .eq("subtask_template_id", subtask_template_id)
+          .maybeSingle();
+
+        if (!existingRow || existingRow.assigned_user_id !== existingUser.id) {
+          return json({ error: "請先認領此子項目。Take this subtask before marking it done." }, 403);
+        }
+
+        const { error } = await supabase
+          .from("task_subtask_completions")
+          .update(
+            completed
+              ? { status: "completed", completed_by: existingUser.id, completed_at: new Date().toISOString() }
+              : { status: "taken", completed_by: null, completed_at: null }
+          )
+          .eq("id", existingRow.id);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       default:

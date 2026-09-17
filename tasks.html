@@ -33,11 +33,11 @@
   .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--field-bg); object-fit: cover; }
   .profile-row .name { font-size: 13.5px; font-weight: 600; }
 
-  .tabs { display: flex; gap: 6px; padding: 14px 20px 0; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 20px 0; }
   .tab-btn {
-    flex: 1; padding: 9px; border-radius: 20px; border: 1.5px solid var(--field-bg);
-    background: var(--field-bg); color: var(--ink-soft); font-size: 13.5px; font-weight: 600;
-    font-family: inherit; cursor: pointer; text-align: center;
+    flex: 1 1 30%; padding: 9px 4px; border-radius: 20px; border: 1.5px solid var(--field-bg);
+    background: var(--field-bg); color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; text-align: center; white-space: nowrap;
   }
   .tab-btn.active { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
 
@@ -53,6 +53,7 @@
   }
   .task-card.mine { border-color: var(--line-green); background: #F3FCF6; }
   .task-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .task-place { font-size: 12px; color: var(--ink-soft); margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
   .task-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 8px; }
   .task-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .slots-label { font-size: 12.5px; color: var(--ink-soft); }
@@ -67,6 +68,28 @@
   .claim-btn:hover { background: var(--line-green-dark); }
   .claim-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
   .release-btn { background: var(--field-bg); color: var(--error); }
+
+  .subtask-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--field-bg); }
+  .subtask-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .subtask-row input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; }
+  .subtask-row .subtask-title { flex: 1; }
+  .subtask-row .subtask-title.done { text-decoration: line-through; color: var(--ink-soft); }
+  .subtask-row .subtask-by { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .subtask-take-btn {
+    background: var(--field-bg); color: var(--ink); border: none; border-radius: 12px;
+    padding: 4px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .subtask-release-btn {
+    background: none; border: none; color: var(--error); font-size: 11px; text-decoration: underline;
+    cursor: pointer; padding: 0; white-space: nowrap;
+  }
+  .mark-complete-btn {
+    padding: 8px 16px; border-radius: 20px; border: none; font-size: 13px; font-weight: 700;
+    cursor: pointer; font-family: inherit; white-space: nowrap; background: var(--ink); color: white;
+  }
+  .status-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
+  .status-badge.completed { background: #FFF3D6; color: #92650A; }
+  .status-badge.confirmed { background: #E4F8EC; color: var(--line-green-dark); }
 
   .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 40px 20px; }
 
@@ -112,6 +135,31 @@
   .claim-modal-actions .cancel-btn { background: var(--field-bg); color: var(--ink); }
 
   #main-screen { display: none; flex-direction: column; flex: 1; }
+
+  /* ---- Calendar view ---- */
+  .calendar-wrap { padding: 14px 20px 0; display: none; }
+  .calendar-wrap.active { display: block; }
+  .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .cal-nav button {
+    width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--field-bg); background: var(--paper);
+    font-size: 15px; cursor: pointer; color: var(--ink);
+  }
+  .cal-nav .cal-month-label { font-size: 14.5px; font-weight: 700; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--ink-soft); padding: 4px 0; font-weight: 600; }
+  .cal-day {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 8px; font-size: 12.5px; cursor: pointer; position: relative; background: var(--field-bg);
+    color: var(--ink); border: 1.5px solid transparent;
+  }
+  .cal-day.empty { background: none; cursor: default; }
+  .cal-day.today { border-color: var(--line-green); }
+  .cal-day.selected { background: var(--line-green); color: white; }
+  .cal-day .cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--line-green-dark); margin-top: 2px; }
+  .cal-day.selected .cal-dot { background: white; }
+  .cal-day.mine-dot .cal-dot { background: var(--error); }
+  .cal-day.selected.mine-dot .cal-dot { background: white; }
+  .cal-selected-heading { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 16px 0 8px; }
 </style>
 </head>
 <body>
@@ -145,12 +193,23 @@
       <button type="button" class="tab-btn active" data-recurrence="daily">每日 Daily</button>
       <button type="button" class="tab-btn" data-recurrence="weekly">每週 Weekly</button>
       <button type="button" class="tab-btn" data-recurrence="monthly">每月 Monthly</button>
+      <button type="button" class="tab-btn" data-recurrence="once">單次 One-time</button>
+      <button type="button" class="tab-btn" data-recurrence="calendar">月曆 Calendar</button>
     </div>
 
-    <label class="mine-toggle">
+    <label class="mine-toggle" id="mine-toggle-row">
       <input type="checkbox" id="mine-only-checkbox">
       只顯示我已認領的 Show only my tasks
     </label>
+
+    <div class="calendar-wrap" id="calendar-wrap">
+      <div class="cal-nav">
+        <button type="button" id="cal-prev-btn">‹</button>
+        <span class="cal-month-label" id="cal-month-label"></span>
+        <button type="button" id="cal-next-btn">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+    </div>
 
     <div class="task-list" id="task-list"></div>
   </div>
@@ -213,6 +272,12 @@ let allTasks = [];
 let activeTab = 'daily';
 let mineOnly = false;
 let pendingClaimInstanceId = null;
+
+// Calendar view state
+let calendarCursor = new Date(); // day-of-month is irrelevant, only y/m used
+let calendarTasks = [];
+let calendarLoadedKey = null; // "YYYY-MM" already fetched, to avoid refetching
+let selectedCalendarDate = null;
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -301,7 +366,7 @@ document.getElementById('relogin-btn').addEventListener('click', () => {
 });
 
 async function loadTasks() {
-  const { tasks } = await callApi('list_tasks', { days: 30 });
+  const { tasks } = await callApi('list_tasks', { days: 90 });
   allTasks = tasks || [];
   renderTasks();
 }
@@ -326,14 +391,69 @@ function formatDateHeading(dateStr) {
   return d.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' }) + '（' + weekday + '）';
 }
 
+function subtaskListHTML(t) {
+  if (!t.subtasks || t.subtasks.length === 0) return '';
+  const canClaim = !!t.can_claim_subtasks;
+  return `
+    <div class="subtask-list">
+      ${t.subtasks.map(s => {
+        const iid = t.instance_id, sid = s.subtask_template_id;
+        if (s.status === 'unassigned') {
+          return `
+            <div class="subtask-row">
+              <span class="subtask-title">${escapeHtml(s.title)}</span>
+              ${canClaim ? `<button type="button" class="subtask-take-btn" data-instance-id="${iid}" data-subtask-id="${sid}">認領 Take</button>` : `<span class="subtask-by">未認領</span>`}
+            </div>`;
+        }
+        if (s.status === 'taken') {
+          if (s.assigned_to_me) {
+            return `
+              <label class="subtask-row">
+                <input type="checkbox" data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">
+                <span class="subtask-title">${escapeHtml(s.title)}</span>
+                <button type="button" class="subtask-release-btn" data-action="release-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">放棄</button>
+              </label>`;
+          }
+          return `
+            <div class="subtask-row">
+              <span class="subtask-title">${escapeHtml(s.title)}</span>
+              <span class="subtask-by">${escapeHtml(s.assigned_name || '—')} 認領中</span>
+            </div>`;
+        }
+        // completed
+        if (s.assigned_to_me) {
+          return `
+            <label class="subtask-row">
+              <input type="checkbox" checked data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">
+              <span class="subtask-title done">${escapeHtml(s.title)}</span>
+              <span class="subtask-by">已完成</span>
+            </label>`;
+        }
+        return `
+          <div class="subtask-row">
+            <span class="subtask-title done">${escapeHtml(s.title)}</span>
+            <span class="subtask-by">${escapeHtml(s.assigned_name || '—')} 已完成</span>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
 function taskCardHTML(t) {
   const isFull = t.slots_filled >= t.slots_total;
   const isMine = !!t.my_assignment_id;
   const names = t.assignees.map(a => escapeHtml(a.display_name || '—')).join('、');
 
   let actionHTML;
-  if (isMine) {
-    actionHTML = `<button type="button" class="release-btn" data-assignment-id="${t.my_assignment_id}">取消認領</button>`;
+  if (t.my_assignment_status === 'completed') {
+    actionHTML = `<span class="status-badge completed">已完成，待確認</span>`;
+  } else if (t.my_assignment_status === 'confirmed') {
+    actionHTML = `<span class="status-badge confirmed">✓ 已確認</span>`;
+  } else if (isMine) {
+    actionHTML = `
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" class="mark-complete-btn" data-assignment-id="${t.my_assignment_id}">標記完成</button>
+        <button type="button" class="release-btn" data-assignment-id="${t.my_assignment_id}">取消認領</button>
+      </div>`;
   } else if (isFull) {
     actionHTML = `<button type="button" class="claim-btn" disabled>已額滿</button>`;
   } else {
@@ -343,17 +463,52 @@ function taskCardHTML(t) {
   return `
     <div class="task-card ${isMine ? 'mine' : ''}">
       <div class="task-title">${escapeHtml(t.title)}</div>
+      ${t.place ? `<div class="task-place">📍 ${escapeHtml(t.place)}</div>` : ''}
       ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
       <div class="task-meta">
         <span class="slots-label ${isFull ? 'full' : ''}">${t.slots_filled} / ${t.slots_total} 人</span>
         ${actionHTML}
       </div>
       ${names ? `<div class="assignee-names">已認領：${names}</div>` : ''}
+      ${subtaskListHTML(t)}
     </div>`;
+}
+
+function bindTaskListEvents(listEl) {
+  listEl.querySelectorAll('.claim-btn:not(:disabled)').forEach(btn => {
+    btn.addEventListener('click', () => openClaimModal(btn.dataset.instanceId, btn.dataset.title));
+  });
+  listEl.querySelectorAll('.release-btn').forEach(btn => {
+    btn.addEventListener('click', () => releaseTask(btn.dataset.assignmentId));
+  });
+  listEl.querySelectorAll('.mark-complete-btn').forEach(btn => {
+    btn.addEventListener('click', () => completeTask(btn.dataset.assignmentId));
+  });
+  listEl.querySelectorAll('.subtask-take-btn').forEach(btn => {
+    btn.addEventListener('click', () => claimSubtask(btn.dataset.instanceId, btn.dataset.subtaskId));
+  });
+  listEl.querySelectorAll('[data-action="release-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => releaseSubtask(btn.dataset.instanceId, btn.dataset.subtaskId));
+  });
+  listEl.querySelectorAll('[data-action="complete-subtask"]').forEach(cb => {
+    cb.addEventListener('change', () => completeSubtask(cb.dataset.instanceId, cb.dataset.subtaskId, cb.checked));
+  });
 }
 
 function renderTasks() {
   const listEl = document.getElementById('task-list');
+  const calWrap = document.getElementById('calendar-wrap');
+  const mineToggleRow = document.getElementById('mine-toggle-row');
+
+  if (activeTab === 'calendar') {
+    calWrap.classList.add('active');
+    mineToggleRow.style.display = 'none';
+    loadCalendarMonth();
+    return;
+  }
+  calWrap.classList.remove('active');
+  mineToggleRow.style.display = 'flex';
+
   let filtered = allTasks.filter(t => t.recurrence === activeTab);
   if (mineOnly) filtered = filtered.filter(t => !!t.my_assignment_id);
 
@@ -373,12 +528,57 @@ function renderTasks() {
     ${byDate[date].map(taskCardHTML).join('')}
   `).join('');
 
-  listEl.querySelectorAll('.claim-btn:not(:disabled)').forEach(btn => {
-    btn.addEventListener('click', () => openClaimModal(btn.dataset.instanceId, btn.dataset.title));
-  });
-  listEl.querySelectorAll('.release-btn').forEach(btn => {
-    btn.addEventListener('click', () => releaseTask(btn.dataset.assignmentId));
-  });
+  bindTaskListEvents(listEl);
+}
+
+// Subtask/task status actions all just refetch the affected views —
+// simpler and safer than hand-patching every derived field (status
+// badges, "誰認領了" labels, slot counts) locally.
+async function refreshAfterChange() {
+  calendarLoadedKey = null;
+  if (activeTab === 'calendar') {
+    await loadCalendarMonth();
+  } else {
+    await loadTasks();
+  }
+}
+
+async function claimSubtask(instanceId, subtaskTemplateId) {
+  try {
+    await callApi('claim_subtask', { instance_id: instanceId, subtask_template_id: subtaskTemplateId });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('認領失敗，請稍後再試。\n' + err.message);
+  }
+}
+
+async function releaseSubtask(instanceId, subtaskTemplateId) {
+  try {
+    await callApi('release_subtask', { instance_id: instanceId, subtask_template_id: subtaskTemplateId });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('放棄失敗，請稍後再試。\n' + err.message);
+  }
+}
+
+async function completeSubtask(instanceId, subtaskTemplateId, completed) {
+  try {
+    await callApi('complete_subtask', { instance_id: instanceId, subtask_template_id: subtaskTemplateId, completed });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('更新失敗，請稍後再試。\n' + err.message);
+    await refreshAfterChange(); // revert the checkbox visually
+  }
+}
+
+async function completeTask(assignmentId) {
+  if (!confirm('確定要標記這項任務為已完成嗎？')) return;
+  try {
+    await callApi('complete_task', { assignment_id: assignmentId });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('標記失敗。\n' + err.message);
+  }
 }
 
 function openClaimModal(instanceId, title) {
@@ -403,6 +603,7 @@ document.getElementById('claim-modal-confirm').addEventListener('click', async (
   try {
     await callApi('claim_task', { instance_id: pendingClaimInstanceId, display_name: name, phone: phone || null });
     document.getElementById('claim-modal-overlay').classList.remove('show');
+    calendarLoadedKey = null; // force a refresh next time calendar is shown
     await loadTasks();
   } catch (err) {
     alert('認領失敗，請稍後再試。\n' + err.message);
@@ -416,10 +617,97 @@ async function releaseTask(assignmentId) {
   if (!confirm('確定要取消認領這項任務嗎？')) return;
   try {
     await callApi('release_task', { assignment_id: assignmentId });
+    calendarLoadedKey = null;
     await loadTasks();
   } catch (err) {
     alert('取消失敗，請稍後再試。\n' + err.message);
   }
+}
+
+/* ---------- Calendar view ---------- */
+
+function monthKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1); }
+function daysInMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
+function toDateStr(y, m, day) {
+  return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
+async function loadCalendarMonth() {
+  const key = monthKey(calendarCursor);
+  if (calendarLoadedKey !== key) {
+    const y = calendarCursor.getFullYear(), m = calendarCursor.getMonth();
+    const from = toDateStr(y, m, 1);
+    const { tasks } = await callApi('list_tasks', { from_date: from, days: daysInMonth(calendarCursor) - 1 });
+    calendarTasks = tasks || [];
+    calendarLoadedKey = key;
+  }
+  renderCalendarGrid();
+  renderCalendarDayList();
+}
+
+document.getElementById('cal-prev-btn').addEventListener('click', () => {
+  calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);
+  selectedCalendarDate = null;
+  loadCalendarMonth();
+});
+document.getElementById('cal-next-btn').addEventListener('click', () => {
+  calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1);
+  selectedCalendarDate = null;
+  loadCalendarMonth();
+});
+
+function renderCalendarGrid() {
+  const y = calendarCursor.getFullYear(), m = calendarCursor.getMonth();
+  document.getElementById('cal-month-label').textContent = calendarCursor.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' });
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const totalDays = daysInMonth(calendarCursor);
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const byDate = {};
+  calendarTasks.forEach(t => {
+    if (!byDate[t.occurrence_date]) byDate[t.occurrence_date] = [];
+    byDate[t.occurrence_date].push(t);
+  });
+
+  const dowLabels = ['日','一','二','三','四','五','六'].map(d => `<div class="cal-dow">${d}</div>`).join('');
+  const blanks = Array.from({ length: firstDow }, () => `<div class="cal-day empty"></div>`).join('');
+  const cells = Array.from({ length: totalDays }, (_, i) => {
+    const day = i + 1;
+    const dateStr = toDateStr(y, m, day);
+    const dayTasks = byDate[dateStr] || [];
+    const hasMine = dayTasks.some(t => !!t.my_assignment_id);
+    const classes = ['cal-day'];
+    if (dateStr === todayStr) classes.push('today');
+    if (dateStr === selectedCalendarDate) classes.push('selected');
+    if (hasMine) classes.push('mine-dot');
+    return `<div class="${classes.join(' ')}" data-date="${dateStr}">${day}${dayTasks.length ? '<span class="cal-dot"></span>' : ''}</div>`;
+  }).join('');
+
+  document.getElementById('cal-grid').innerHTML = dowLabels + blanks + cells;
+
+  document.querySelectorAll('#cal-grid .cal-day:not(.empty)').forEach(cell => {
+    cell.addEventListener('click', () => {
+      selectedCalendarDate = cell.dataset.date === selectedCalendarDate ? null : cell.dataset.date;
+      renderCalendarGrid();
+      renderCalendarDayList();
+    });
+  });
+}
+
+function renderCalendarDayList() {
+  const listEl = document.getElementById('task-list');
+  if (!selectedCalendarDate) {
+    listEl.innerHTML = `<div class="empty-note">點選上方日期以查看該天的任務。</div>`;
+    return;
+  }
+  const dayTasks = calendarTasks.filter(t => t.occurrence_date === selectedCalendarDate);
+  if (dayTasks.length === 0) {
+    listEl.innerHTML = `<div class="cal-selected-heading">${formatDateHeading(selectedCalendarDate)}</div><div class="empty-note">這天沒有任務。</div>`;
+    return;
+  }
+  listEl.innerHTML = `<div class="cal-selected-heading">${formatDateHeading(selectedCalendarDate)}</div>${dayTasks.map(taskCardHTML).join('')}`;
+  bindTaskListEvents(listEl);
 }
 
 initLiff();
