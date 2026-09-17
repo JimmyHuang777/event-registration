@@ -17,17 +17,23 @@ jobs:
         with:
           version: latest
 
+      # --no-verify-jwt is required on every deploy: these functions do
+      # their own auth (verifying the LINE ID token / Supabase session
+      # token inside the function body), so Supabase's own gateway-level
+      # JWT check must stay off. Without this flag a fresh/redeployed
+      # function can silently revert to gateway-enforced JWT, which
+      # rejects every request with a 401 before our code even runs.
       - name: Deploy registrant-api Edge Function
-        run: supabase functions deploy registrant-api --project-ref ixzvbyxhzttvnheivsoc
+        run: supabase functions deploy registrant-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy tasks-api Edge Function
-        run: supabase functions deploy tasks-api --project-ref ixzvbyxhzttvnheivsoc
+        run: supabase functions deploy tasks-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy create-liff-app Edge Function
-        run: supabase functions deploy create-liff-app --project-ref ixzvbyxhzttvnheivsoc
+        run: supabase functions deploy create-liff-app --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
