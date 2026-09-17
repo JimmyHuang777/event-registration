@@ -1,20 +1,18 @@
 name: Deploy Supabase Edge Functions
 
-# Runs whenever either function's code changes, so pushing frontend
-# changes to this same repo doesn't trigger an unnecessary redeploy.
 on:
   push:
     branches: [main]
     paths:
       - 'supabase/functions/registrant-api/**'
       - 'supabase/functions/tasks-api/**'
+      - 'supabase/functions/create-liff-app/**'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: supabase/setup-cli@v1
         with:
           version: latest
@@ -26,5 +24,10 @@ jobs:
 
       - name: Deploy tasks-api Edge Function
         run: supabase functions deploy tasks-api --project-ref ixzvbyxhzttvnheivsoc
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy create-liff-app Edge Function
+        run: supabase functions deploy create-liff-app --project-ref ixzvbyxhzttvnheivsoc
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

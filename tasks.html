@@ -6,6 +6,7 @@
 <title>任務認領 Task Roster</title>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   :root {
@@ -179,13 +180,20 @@
 /* =========================================================
    CONFIG
    ========================================================= */
-// Create ONE LIFF app for this page in LINE Developers Console
-// (Endpoint URL = wherever this file is deployed), then paste its
-// ID here. Unlike the registration form, this page isn't per-event,
-// so there's no auto-creation flow — just do it once manually.
-const LIFF_ID = 'PASTE_YOUR_TASKS_LIFF_ID_HERE';
+// LIFF_ID is looked up at load time from the liff_apps table (the
+// dashboard's Task Management panel creates it automatically, the
+// same way each event gets its own unique LIFF app) — no manual
+// LINE Developers Console step needed.
+let LIFF_ID = null;
 const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/tasks-api';
+
+// Used ONLY to read the public liff_apps row before login — same
+// pattern as the registration form's public event lookup.
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
 /* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const screens = {
   loading: document.getElementById('loading-screen'),
@@ -237,6 +245,19 @@ function withTimeout(promise, ms, label) {
 
 async function initLiff() {
   try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'tasks').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台的「任務管理」中建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
     setLoadingText('liff.init()…');
     await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
 
