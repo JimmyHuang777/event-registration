@@ -48,45 +48,37 @@
   .task-card {
     border: 1.5px solid var(--field-bg); border-radius: 12px; padding: 14px; margin-bottom: 10px;
   }
-  .task-card.mine { border-color: var(--line-green); background: #F3FCF6; }
   .task-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
   .task-place { font-size: 12px; color: var(--ink-soft); margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
   .task-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 8px; }
-  .task-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .slots-label { font-size: 12.5px; color: var(--ink-soft); }
-  .slots-label.full { color: var(--error); font-weight: 600; }
-  .assignee-names { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
-
-  .claim-btn, .release-btn {
-    padding: 8px 16px; border-radius: 20px; border: none; font-size: 13px; font-weight: 700;
-    cursor: pointer; font-family: inherit; white-space: nowrap;
-  }
-  .claim-btn { background: var(--line-green); color: white; }
-  .claim-btn:hover { background: var(--line-green-dark); }
-  .claim-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
-  .release-btn { background: var(--field-bg); color: var(--error); }
 
   .subtask-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--field-bg); }
-  .subtask-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
-  .subtask-row input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; }
-  .subtask-row .subtask-title { flex: 1; }
+  .subtask-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 6px 0; font-size: 13px; }
+  .subtask-row .subtask-title { flex: 1 1 auto; min-width: 40%; }
   .subtask-row .subtask-title.done { text-decoration: line-through; color: var(--ink-soft); }
   .subtask-row .subtask-by { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .subtask-actions { display: flex; gap: 6px; align-items: center; margin-left: auto; }
   .subtask-take-btn {
-    background: var(--field-bg); color: var(--ink); border: none; border-radius: 12px;
-    padding: 4px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+    background: var(--line-green); color: white; border: none; border-radius: 12px;
+    padding: 5px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
   }
-  .subtask-release-btn {
-    background: none; border: none; color: var(--error); font-size: 11px; text-decoration: underline;
-    cursor: pointer; padding: 0; white-space: nowrap;
+  .subtask-complete-btn {
+    background: var(--ink); color: white; border: none; border-radius: 12px;
+    padding: 5px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
   }
-  .mark-complete-btn {
-    padding: 8px 16px; border-radius: 20px; border: none; font-size: 13px; font-weight: 700;
-    cursor: pointer; font-family: inherit; white-space: nowrap; background: var(--ink); color: white;
+  .subtask-give-up-btn {
+    background: none; border: 1.5px solid #F3D4D1; color: var(--error); border-radius: 12px;
+    padding: 4px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
   }
-  .status-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
+  .subtask-undo-btn {
+    background: none; border: 1.5px solid var(--field-bg); color: var(--ink-soft); border-radius: 12px;
+    padding: 4px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .status-badge.unassigned { background: var(--field-bg); color: var(--ink-soft); }
+  .status-badge.taken { background: #E7F0FF; color: #1D5FC2; }
   .status-badge.completed { background: #FFF3D6; color: #92650A; }
-  .status-badge.confirmed { background: #E4F8EC; color: var(--line-green-dark); }
+  .status-badge.incomplete { background: #FBE4E1; color: var(--error); }
 
   .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 40px 20px; }
 
@@ -112,25 +104,6 @@
     border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
   }
 
-  .claim-modal-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-    align-items: flex-end; justify-content: center; z-index: 100;
-  }
-  .claim-modal-overlay.show { display: flex; }
-  .claim-modal { background: var(--paper); border-radius: 16px 16px 0 0; padding: 24px 20px; width: 100%; max-width: 480px; }
-  .claim-modal h3 { margin: 0 0 4px; font-size: 16px; }
-  .claim-modal p { margin: 0 0 16px; font-size: 13px; color: var(--ink-soft); }
-  .claim-modal .field { margin-bottom: 12px; }
-  .claim-modal .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
-  .claim-modal .field input {
-    width: 100%; padding: 11px 12px; border: 1.5px solid var(--field-bg); background: var(--field-bg);
-    border-radius: 8px; font-size: 14.5px; font-family: inherit;
-  }
-  .claim-modal-actions { display: flex; gap: 10px; margin-top: 16px; }
-  .claim-modal-actions button { flex: 1; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 700; border: none; font-family: inherit; cursor: pointer; }
-  .claim-modal-actions .confirm-btn { background: var(--line-green); color: white; }
-  .claim-modal-actions .cancel-btn { background: var(--field-bg); color: var(--ink); }
-
   #main-screen { display: none; flex-direction: column; flex: 1; }
 </style>
 </head>
@@ -153,7 +126,7 @@
   <div id="main-screen">
     <div class="header">
       <h1>任務認領 Task Roster</h1>
-      <p>未認領（您所屬群組）／我的任務／一週內的任務</p>
+      <p>工作項目以子項目為單位認領／完成</p>
     </div>
 
     <div class="profile-row">
@@ -162,33 +135,14 @@
     </div>
 
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-view="unassigned">未認領 Unassigned</button>
-      <button type="button" class="tab-btn" data-view="mine">我的任務 My Job</button>
-      <button type="button" class="tab-btn" data-view="week">一週內 This Week</button>
+      <button type="button" class="tab-btn active" data-view="all">所有組內任務</button>
+      <button type="button" class="tab-btn" data-view="mine">我的任務</button>
+      <button type="button" class="tab-btn" data-view="today">今日組內任務</button>
     </div>
 
     <div class="task-list" id="task-list"></div>
   </div>
 
-</div>
-
-<div class="claim-modal-overlay" id="claim-modal-overlay">
-  <div class="claim-modal">
-    <h3>確認認領 Confirm claim</h3>
-    <p id="claim-modal-task-title"></p>
-    <div class="field">
-      <label>姓名 Name</label>
-      <input type="text" id="claim-name">
-    </div>
-    <div class="field">
-      <label>手機號碼 Phone <span style="font-weight:400; color:var(--ink-soft);">用於聯繫</span></label>
-      <input type="tel" id="claim-phone" placeholder="0912-345-678">
-    </div>
-    <div class="claim-modal-actions">
-      <button type="button" class="cancel-btn" id="claim-modal-cancel">取消</button>
-      <button type="button" class="confirm-btn" id="claim-modal-confirm">確認認領 Claim</button>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -225,8 +179,7 @@ function showScreen(name) {
 let idToken = null;
 let lineProfile = null;
 let allTasks = [];
-let activeView = 'unassigned'; // 'unassigned' | 'mine' | 'week'
-let pendingClaimInstanceId = null;
+let activeView = 'all'; // 'all' | 'mine' | 'today'
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -293,7 +246,6 @@ async function initLiff() {
 
     document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
     document.getElementById('profile-name').textContent = lineProfile.displayName;
-    document.getElementById('claim-name').value = lineProfile.displayName;
 
     await loadTasks();
     showScreen('main');
@@ -335,146 +287,134 @@ function formatDateHeading(dateStr) {
   return d.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' }) + '（' + weekday + '）';
 }
 
-function subtaskListHTML(t) {
-  if (!t.subtasks || t.subtasks.length === 0) return '';
-  const canClaim = !!t.can_claim_subtasks;
+const STATUS_LABEL = {
+  unassigned: '未指派',
+  taken: '已指派',
+  completed: '已完成',
+  incomplete: '未能完成',
+};
+
+function statusBadgeHTML(status) {
+  return `<span class="status-badge ${status}">${STATUS_LABEL[status] || status}</span>`;
+}
+
+// mode 'browse' — 所有組內任務 / 今日組內任務: every subtask on the
+// job is shown with its current status; only 未指派/未能完成 ones
+// get a Take button (read-only otherwise, since acting on someone
+// else's subtask happens from their own 我的任務 tab).
+// mode 'mine' — 我的任務: only the caller's own subtasks (taken or
+// completed by them) are shown, each with actions to complete, give
+// up, or undo.
+function subtaskListHTML(t, mode) {
+  const iid = t.instance_id;
+  let subtasks = t.subtasks || [];
+  if (mode === 'mine') subtasks = subtasks.filter(s => s.assigned_to_me);
+  if (subtasks.length === 0) return '';
+
   return `
     <div class="subtask-list">
-      ${t.subtasks.map(s => {
-        const iid = t.instance_id, sid = s.subtask_template_id;
-        if (s.status === 'unassigned') {
-          return `
-            <div class="subtask-row">
-              <span class="subtask-title">${escapeHtml(s.title)}</span>
-              ${canClaim ? `<button type="button" class="subtask-take-btn" data-instance-id="${iid}" data-subtask-id="${sid}">認領 Take</button>` : `<span class="subtask-by">未認領</span>`}
-            </div>`;
-        }
-        if (s.status === 'taken') {
-          if (s.assigned_to_me) {
+      ${subtasks.map(s => {
+        const sid = s.subtask_template_id;
+
+        if (mode === 'mine') {
+          if (s.status === 'taken') {
             return `
-              <label class="subtask-row">
-                <input type="checkbox" data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">
+              <div class="subtask-row">
                 <span class="subtask-title">${escapeHtml(s.title)}</span>
-                <button type="button" class="subtask-release-btn" data-action="release-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">放棄</button>
-              </label>`;
+                <div class="subtask-actions">
+                  <button type="button" class="subtask-complete-btn" data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">已完成</button>
+                  <button type="button" class="subtask-give-up-btn" data-action="release-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">放棄</button>
+                </div>
+              </div>`;
           }
+          // completed
+          return `
+            <div class="subtask-row">
+              <span class="subtask-title done">${escapeHtml(s.title)}</span>
+              <div class="subtask-actions">
+                ${statusBadgeHTML('completed')}
+                <button type="button" class="subtask-undo-btn" data-action="undo-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">復原 Undo</button>
+              </div>
+            </div>`;
+        }
+
+        // browse mode
+        if (s.status === 'unassigned' || s.status === 'incomplete') {
           return `
             <div class="subtask-row">
               <span class="subtask-title">${escapeHtml(s.title)}</span>
-              <span class="subtask-by">${escapeHtml(s.assigned_name || '—')} 認領中</span>
+              <div class="subtask-actions">
+                ${statusBadgeHTML(s.status)}
+                <button type="button" class="subtask-take-btn" data-action="claim-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">認領 Take</button>
+              </div>
             </div>`;
-        }
-        // completed
-        if (s.assigned_to_me) {
-          return `
-            <label class="subtask-row">
-              <input type="checkbox" checked data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">
-              <span class="subtask-title done">${escapeHtml(s.title)}</span>
-              <span class="subtask-by">已完成</span>
-            </label>`;
         }
         return `
           <div class="subtask-row">
-            <span class="subtask-title done">${escapeHtml(s.title)}</span>
-            <span class="subtask-by">${escapeHtml(s.assigned_name || '—')} 已完成</span>
+            <span class="subtask-title ${s.status === 'completed' ? 'done' : ''}">${escapeHtml(s.title)}</span>
+            <div class="subtask-actions">
+              ${statusBadgeHTML(s.status)}
+              <span class="subtask-by">${escapeHtml(s.assigned_to_me ? '你' : (s.assigned_name || '—'))}</span>
+            </div>
           </div>`;
       }).join('')}
     </div>`;
 }
 
-function taskCardHTML(t) {
-  const isFull = t.slots_filled >= t.slots_total;
-  const isMine = !!t.my_assignment_id;
-  const names = t.assignees.map(a => escapeHtml(a.display_name || '—')).join('、');
-
-  let actionHTML;
-  if (t.my_assignment_status === 'completed') {
-    actionHTML = `<span class="status-badge completed">已完成，待確認</span>`;
-  } else if (t.my_assignment_status === 'confirmed') {
-    actionHTML = `<span class="status-badge confirmed">✓ 已確認</span>`;
-  } else if (isMine) {
-    actionHTML = `
-      <div style="display:flex; gap:8px; align-items:center;">
-        <button type="button" class="mark-complete-btn" data-assignment-id="${t.my_assignment_id}">標記完成</button>
-        <button type="button" class="release-btn" data-assignment-id="${t.my_assignment_id}">取消認領</button>
-      </div>`;
-  } else if (isFull) {
-    actionHTML = `<button type="button" class="claim-btn" disabled>已額滿</button>`;
-  } else {
-    actionHTML = `<button type="button" class="claim-btn" data-instance-id="${t.instance_id}" data-title="${escapeHtml(t.title)}">認領 Claim</button>`;
-  }
-
+// The job itself is just a heading/container now — only its
+// sub-tasks can be taken or completed.
+function taskCardHTML(t, mode) {
   return `
-    <div class="task-card ${isMine ? 'mine' : ''}">
+    <div class="task-card">
       <div class="task-title">${escapeHtml(t.title)}</div>
       ${t.place ? `<div class="task-place">📍 ${escapeHtml(t.place)}</div>` : ''}
       ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
-      <div class="task-meta">
-        <span class="slots-label ${isFull ? 'full' : ''}">${t.slots_filled} / ${t.slots_total} 人</span>
-        ${actionHTML}
-      </div>
-      ${names ? `<div class="assignee-names">已認領：${names}</div>` : ''}
-      ${subtaskListHTML(t)}
+      ${subtaskListHTML(t, mode)}
     </div>`;
 }
 
 function bindTaskListEvents(listEl) {
-  listEl.querySelectorAll('.claim-btn:not(:disabled)').forEach(btn => {
-    btn.addEventListener('click', () => openClaimModal(btn.dataset.instanceId, btn.dataset.title));
-  });
-  listEl.querySelectorAll('.release-btn').forEach(btn => {
-    btn.addEventListener('click', () => releaseTask(btn.dataset.assignmentId));
-  });
-  listEl.querySelectorAll('.mark-complete-btn').forEach(btn => {
-    btn.addEventListener('click', () => completeTask(btn.dataset.assignmentId));
-  });
-  listEl.querySelectorAll('.subtask-take-btn').forEach(btn => {
+  listEl.querySelectorAll('[data-action="claim-subtask"]').forEach(btn => {
     btn.addEventListener('click', () => claimSubtask(btn.dataset.instanceId, btn.dataset.subtaskId));
   });
   listEl.querySelectorAll('[data-action="release-subtask"]').forEach(btn => {
     btn.addEventListener('click', () => releaseSubtask(btn.dataset.instanceId, btn.dataset.subtaskId));
   });
-  listEl.querySelectorAll('[data-action="complete-subtask"]').forEach(cb => {
-    cb.addEventListener('change', () => completeSubtask(cb.dataset.instanceId, cb.dataset.subtaskId, cb.checked));
+  listEl.querySelectorAll('[data-action="complete-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => completeSubtask(btn.dataset.instanceId, btn.dataset.subtaskId, true));
+  });
+  listEl.querySelectorAll('[data-action="undo-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => completeSubtask(btn.dataset.instanceId, btn.dataset.subtaskId, false));
   });
 }
 
-function hasUnclaimedSubtask(t) {
-  return !!(t.subtasks && t.subtasks.some(s => s.status === 'unassigned'));
-}
 function hasMySubtask(t) {
   return !!(t.subtasks && t.subtasks.some(s => s.assigned_to_me));
 }
 
 function filterForView(view) {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const weekEnd = new Date();
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  const weekEndStr = weekEnd.toISOString().slice(0, 10);
-
-  if (view === 'unassigned') {
-    return allTasks.filter(t => (t.slots_filled < t.slots_total) || hasUnclaimedSubtask(t));
+  if (view === 'today') {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return allTasks.filter(t => t.occurrence_date === todayStr);
   }
   if (view === 'mine') {
-    return allTasks.filter(t => !!t.my_assignment_id || hasMySubtask(t));
+    return allTasks.filter(hasMySubtask);
   }
-  // 'week'
-  return allTasks.filter(t =>
-    (!!t.my_assignment_id || hasMySubtask(t)) &&
-    t.occurrence_date >= todayStr && t.occurrence_date <= weekEndStr
-  );
+  // 'all'
+  return allTasks;
 }
 
 const emptyNoteByView = {
-  unassigned: '目前沒有未認領的任務。',
-  mine: '您目前沒有已認領的任務。',
-  week: '未來一週內沒有您已認領的任務。',
+  all: '目前沒有任務。',
+  mine: '您目前沒有已認領的子項目。',
+  today: '今天沒有任務。',
 };
 
 function renderTasks() {
   const listEl = document.getElementById('task-list');
 
   const filtered = filterForView(activeView);
+  const mode = activeView === 'mine' ? 'mine' : 'browse';
 
   if (filtered.length === 0) {
     listEl.innerHTML = `<div class="empty-note">${emptyNoteByView[activeView] || '目前沒有任務。'}</div>`;
@@ -489,7 +429,7 @@ function renderTasks() {
 
   listEl.innerHTML = Object.keys(byDate).sort().map(date => `
     <div class="date-heading">${formatDateHeading(date)}</div>
-    ${byDate[date].map(taskCardHTML).join('')}
+    ${byDate[date].map(t => taskCardHTML(t, mode)).join('')}
   `).join('');
 
   bindTaskListEvents(listEl);
@@ -527,57 +467,6 @@ async function completeSubtask(instanceId, subtaskTemplateId, completed) {
   } catch (err) {
     alert('更新失敗，請稍後再試。\n' + err.message);
     await refreshAfterChange(); // revert the checkbox visually
-  }
-}
-
-async function completeTask(assignmentId) {
-  if (!confirm('確定要標記這項任務為已完成嗎？')) return;
-  try {
-    await callApi('complete_task', { assignment_id: assignmentId });
-    await refreshAfterChange();
-  } catch (err) {
-    alert('標記失敗。\n' + err.message);
-  }
-}
-
-function openClaimModal(instanceId, title) {
-  pendingClaimInstanceId = instanceId;
-  document.getElementById('claim-modal-task-title').textContent = title;
-  document.getElementById('claim-modal-overlay').classList.add('show');
-}
-
-document.getElementById('claim-modal-cancel').addEventListener('click', () => {
-  document.getElementById('claim-modal-overlay').classList.remove('show');
-});
-
-document.getElementById('claim-modal-confirm').addEventListener('click', async () => {
-  const name = document.getElementById('claim-name').value.trim();
-  const phone = document.getElementById('claim-phone').value.trim();
-  if (!name) { alert('請輸入姓名。'); return; }
-
-  const confirmBtn = document.getElementById('claim-modal-confirm');
-  confirmBtn.disabled = true;
-  confirmBtn.textContent = '送出中…';
-
-  try {
-    await callApi('claim_task', { instance_id: pendingClaimInstanceId, display_name: name, phone: phone || null });
-    document.getElementById('claim-modal-overlay').classList.remove('show');
-    await loadTasks();
-  } catch (err) {
-    alert('認領失敗，請稍後再試。\n' + err.message);
-  } finally {
-    confirmBtn.disabled = false;
-    confirmBtn.textContent = '確認認領 Claim';
-  }
-});
-
-async function releaseTask(assignmentId) {
-  if (!confirm('確定要取消認領這項任務嗎？')) return;
-  try {
-    await callApi('release_task', { assignment_id: assignmentId });
-    await loadTasks();
-  } catch (err) {
-    alert('取消失敗，請稍後再試。\n' + err.message);
   }
 }
 

@@ -214,12 +214,18 @@ serve(async (req) => {
             const state = subtaskState.find(
               (c) => c.subtask_template_id === s.id && c.instance_id === inst.id
             );
+            // 'unassigned' 未指派 (no row yet) | 'taken' 已指派 |
+            // 'completed' 已完成 | 'incomplete' 未能完成 (was taken,
+            // then given up — stays visible/claimable, distinct from
+            // never having been touched at all).
+            const status = state ? state.status : "unassigned";
+            const activeOrDone = status === "taken" || status === "completed";
             return {
               subtask_template_id: s.id,
               title: s.title,
-              status: state ? state.status : "unassigned", // 'unassigned' | 'taken' | 'completed'
-              assigned_name: state ? state.users?.display_name || null : null,
-              assigned_to_me: !!(state && existingUser && state.assigned_user_id === existingUser.id),
+              status,
+              assigned_name: state && activeOrDone ? state.users?.display_name || null : null,
+              assigned_to_me: !!(state && existingUser && activeOrDone && state.assigned_user_id === existingUser.id),
             };
           });
 
@@ -457,16 +463,31 @@ serve(async (req) => {
 
         const { data: existingRow } = await supabase
           .from("task_subtask_completions")
-          .select("id, assigned_user_id")
+          .select("id, assigned_user_id, status")
           .eq("instance_id", instance_id)
           .eq("subtask_template_id", subtask_template_id)
           .maybeSingle();
 
+        // Claimable when there's no row yet (未指派) or when it was
+        // previously given up (未能完成 / 'incomplete'). Already
+        // taken or already completed is not claimable.
         if (existingRow) {
-          if (existingRow.assigned_user_id === claimerUser.id) {
+          if (existingRow.status === "taken" && existingRow.assigned_user_id === claimerUser.id) {
             return json({ ok: true }); // already mine — idempotent
           }
-          return json({ error: "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
+          if (existingRow.status === "taken") {
+            return json({ error: "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
+          }
+          if (existingRow.status === "completed") {
+            return json({ error: "這個子項目已經完成了。This subtask has already been completed." }, 409);
+          }
+          // status === 'incomplete' — reclaim it in place
+          const { error } = await supabase
+            .from("task_subtask_completions")
+            .update({ assigned_user_id: claimerUser.id, status: "taken", completed_by: null, completed_at: null })
+            .eq("id", existingRow.id);
+          if (error) return json({ error: error.message }, 400);
+          return json({ ok: true });
         }
 
         const { error } = await supabase
@@ -486,7 +507,7 @@ serve(async (req) => {
 
         const { data: existingRow } = await supabase
           .from("task_subtask_completions")
-          .select("id, assigned_user_id")
+          .select("id, assigned_user_id, status")
           .eq("instance_id", instance_id)
           .eq("subtask_template_id", subtask_template_id)
           .maybeSingle();
@@ -495,8 +516,17 @@ serve(async (req) => {
         if (existingRow.assigned_user_id !== existingUser.id) {
           return json({ error: "You can only release a subtask you took yourself." }, 403);
         }
+        if (existingRow.status !== "taken") {
+          return json({ error: "這個子項目目前無法放棄。This subtask can't be given up right now." }, 400);
+        }
 
-        const { error } = await supabase.from("task_subtask_completions").delete().eq("id", existingRow.id);
+        // Giving up doesn't erase the row — it flips to 未能完成
+        // ('incomplete') so it stays visible with that status and
+        // anyone (including the same person) can take it again.
+        const { error } = await supabase
+          .from("task_subtask_completions")
+          .update({ status: "incomplete", completed_by: null, completed_at: null })
+          .eq("id", existingRow.id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
       }
@@ -511,7 +541,7 @@ serve(async (req) => {
 
         const { data: existingRow } = await supabase
           .from("task_subtask_completions")
-          .select("id, assigned_user_id")
+          .select("id, assigned_user_id, status")
           .eq("instance_id", instance_id)
           .eq("subtask_template_id", subtask_template_id)
           .maybeSingle();
@@ -520,13 +550,25 @@ serve(async (req) => {
           return json({ error: "請先認領此子項目。Take this subtask before marking it done." }, 403);
         }
 
+        if (completed) {
+          if (existingRow.status !== "taken") {
+            return json({ error: "這個子項目目前無法標記完成。This subtask can't be marked done right now." }, 400);
+          }
+          const { error } = await supabase
+            .from("task_subtask_completions")
+            .update({ status: "completed", completed_by: existingUser.id, completed_at: new Date().toISOString() })
+            .eq("id", existingRow.id);
+          if (error) return json({ error: error.message }, 400);
+          return json({ ok: true });
+        }
+
+        // Undo: only a completed row can be reverted back to taken.
+        if (existingRow.status !== "completed") {
+          return json({ ok: true }); // nothing to undo
+        }
         const { error } = await supabase
           .from("task_subtask_completions")
-          .update(
-            completed
-              ? { status: "completed", completed_by: existingUser.id, completed_at: new Date().toISOString() }
-              : { status: "taken", completed_by: null, completed_at: null }
-          )
+          .update({ status: "taken", completed_by: null, completed_at: null })
           .eq("id", existingRow.id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
