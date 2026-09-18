@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>任務認領 Task Roster</title>
+<title>行功了愿表 Task Roster</title>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -125,7 +125,7 @@
 
   <div id="main-screen">
     <div class="header">
-      <h1>任務認領 Task Roster</h1>
+      <h1>行功了愿表 Task Roster</h1>
       <p>工作項目以子項目為單位認領／完成</p>
     </div>
 
@@ -135,9 +135,9 @@
     </div>
 
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-view="all">所有組內任務</button>
-      <button type="button" class="tab-btn" data-view="mine">我的任務</button>
-      <button type="button" class="tab-btn" data-view="today">今日組內任務</button>
+      <button type="button" class="tab-btn active" data-view="all">所有組內可了愿</button>
+      <button type="button" class="tab-btn" data-view="mine">我的行功了愿</button>
+      <button type="button" class="tab-btn" data-view="today">今日組內了愿</button>
     </div>
 
     <div class="task-list" id="task-list"></div>
@@ -298,11 +298,11 @@ function statusBadgeHTML(status) {
   return `<span class="status-badge ${status}">${STATUS_LABEL[status] || status}</span>`;
 }
 
-// mode 'browse' — 所有組內任務 / 今日組內任務: every subtask on the
+// mode 'browse' — 所有組內可了愿 / 今日組內了愿: every subtask on the
 // job is shown with its current status; only 未指派/未能完成 ones
 // get a Take button (read-only otherwise, since acting on someone
-// else's subtask happens from their own 我的任務 tab).
-// mode 'mine' — 我的任務: only the caller's own subtasks (taken or
+// else's subtask happens from their own 我的行功了愿 tab).
+// mode 'mine' — 我的行功了愿: only the caller's own subtasks (taken or
 // completed by them) are shown, each with actions to complete, give
 // up, or undo.
 function subtaskListHTML(t, mode) {
