@@ -16,9 +16,9 @@
 //   - 活動管理 Event Admin (event-admin.html) — shown only if the
 //     caller is listed in event_admins.
 //   - one entry per currently active event that already has a
-//     working LINE registration link — events have no group
-//     visibility rule of their own (unlike job templates/flows), so
-//     every active, linked event is listed for everyone.
+//     working LINE registration link and is visible to this member
+//     — same "no rows = public" group-visibility rule as job
+//     templates and flows, via event_groups.
 //
 // This function only decides WHICH entries to show (booleans) — the
 // actual liff_id for each fixed-purpose page is looked up by
@@ -175,17 +175,34 @@ serve(async (req) => {
       );
     }
 
-    // ---- Active events with a working registration link ----
-    // Events have no group-visibility rule of their own, so every
-    // active event that already has a valid liff_id is listed —
-    // no per-user filtering beyond is_active.
+    // ---- Active events with a working registration link, visible
+    // to this member (same "no rows = public" group rule as job
+    // templates and flows, via event_groups). ----
     const { data: eventRows } = await supabase
       .from("events")
       .select("id, name, event_date, location, liff_id")
       .eq("is_active", true)
       .order("event_date", { ascending: true });
-    const events = (eventRows || [])
-      .filter((e: any) => e.liff_id && /^\d+-[A-Za-z0-9]+$/.test(e.liff_id))
+    const linkedEvents = (eventRows || []).filter((e: any) => e.liff_id && /^\d+-[A-Za-z0-9]+$/.test(e.liff_id));
+    const linkedEventIds = linkedEvents.map((e: any) => e.id);
+
+    let eventGroupsByEvent: Record<string, string[]> = {};
+    if (linkedEventIds.length > 0) {
+      const { data: eventGroupLinks } = await supabase
+        .from("event_groups")
+        .select("event_id, group_id")
+        .in("event_id", linkedEventIds);
+      (eventGroupLinks || []).forEach((r: any) => {
+        (eventGroupsByEvent[r.event_id] ||= []).push(r.group_id);
+      });
+    }
+
+    const events = linkedEvents
+      .filter((e: any) => {
+        const groups = eventGroupsByEvent[e.id];
+        if (!groups || groups.length === 0) return true; // public event
+        return groups.some((gid) => myGroupIds.has(gid));
+      })
       .map((e: any) => ({ id: e.id, name: e.name, event_date: e.event_date, location: e.location, liff_id: e.liff_id }));
 
     return json({

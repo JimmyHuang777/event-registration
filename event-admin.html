@@ -99,6 +99,12 @@
   }
   .fb-required-toggle.is-required { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bg); }
 
+  .group-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .group-chip { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 20px; border: 1.5px solid var(--canvas); font-size: 12.5px; cursor: pointer; }
+  .group-chip.checked { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+  .group-chip input { width: 14px; height: 14px; }
+  .no-groups-note { font-size: 12.5px; color: var(--ink-soft); }
+
   .form-actions { display: flex; gap: 10px; margin-top: 18px; }
   .form-actions .btn-primary, .form-actions .btn-cancel { flex: 1; }
 
@@ -203,6 +209,11 @@
         <button type="button" class="btn-add" id="add-field-btn">＋ 新增欄位 Add field</button>
       </div>
 
+      <div class="field">
+        <label>適用群組 Groups <span class="hint" style="margin:0;">選填，不勾選則所有人都能看到這個活動列在首頁上</span></label>
+        <div class="group-chip-list" id="group-chip-list"></div>
+      </div>
+
       <p class="modal-error" id="form-error"></p>
       <p class="modal-warning" id="form-warning" style="display:none;"></p>
 
@@ -245,6 +256,7 @@ function showScreen(name) {
 let idToken = null;
 let lineProfile = null;
 let allEvents = [];
+let allGroups = [];
 let editingId = null;
 let fieldBuilderCount = 0;
 
@@ -340,9 +352,30 @@ document.getElementById('relogin-btn').addEventListener('click', () => {
 });
 
 async function loadAll() {
-  const res = await callApi('list_events');
-  allEvents = res.events || [];
+  const [eventsRes, groupsRes] = await Promise.all([
+    callApi('list_events'),
+    callApi('list_groups'),
+  ]);
+  allEvents = eventsRes.events || [];
+  allGroups = groupsRes.groups || [];
   renderEventList();
+}
+
+function renderGroupChips(checkedGroupIds) {
+  const wrap = document.getElementById('group-chip-list');
+  if (allGroups.length === 0) {
+    wrap.innerHTML = '<span class="no-groups-note">尚未建立任何群組。</span>';
+    return;
+  }
+  wrap.innerHTML = allGroups.map(g => `
+    <label class="group-chip ${checkedGroupIds.has(g.id) ? 'checked' : ''}">
+      <input type="checkbox" value="${g.id}" ${checkedGroupIds.has(g.id) ? 'checked' : ''}>
+      ${escapeHtml(g.name)}
+    </label>
+  `).join('');
+  wrap.querySelectorAll('.group-chip input').forEach(cb => {
+    cb.addEventListener('change', () => cb.closest('.group-chip').classList.toggle('checked', cb.checked));
+  });
 }
 
 /* ---------- Event list ---------- */
@@ -500,6 +533,9 @@ function openForm(ev) {
   document.getElementById('field-builder-list').innerHTML = '';
   (ev ? (ev.form_schema || []) : []).forEach(f => addFieldBuilderRow(f));
 
+  const checkedGroupIds = new Set(ev ? (ev.group_ids || []) : []);
+  renderGroupChips(checkedGroupIds);
+
   showScreen('form');
 }
 
@@ -525,6 +561,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     event_date: document.getElementById('f-date').value || null,
     location: document.getElementById('f-location').value.trim() || null,
     form_schema: collectFormSchema(),
+    group_ids: [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value),
   };
   if (!editingId) {
     payload.slug = document.getElementById('f-slug').value.trim();

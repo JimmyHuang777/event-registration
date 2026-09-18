@@ -22,9 +22,11 @@
 // Actions:
 //   whoami             — registers/looks up the caller's `users` row
 //                        and reports whether they're an event admin.
-//   list_events        — every event, for the list/edit screens.
+//   list_events        — every event with its group_ids, for the
+//                        list/edit screens.
+//   list_groups        — every group, for the checkbox list.
 //   save_event         — create (+ auto-create LIFF link) or update
-//                        an event.
+//                        an event (+ sync group links).
 //   toggle_event_active — flip an event's is_active flag.
 //   delete_event       — delete an event.
 //
@@ -112,6 +114,23 @@ async function createLiffApp(channelAccessToken: string, endpointUrl: string, de
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
+// Replace an event's group links with whatever was submitted — a
+// plain join table, so no ids to preserve, just diff and apply. Same
+// approach the dashboard uses for task_template_groups.
+async function syncEventGroups(eventId: string, groupIds: string[]) {
+  const { data: existingLinks } = await supabase.from("event_groups").select("group_id").eq("event_id", eventId);
+  const existingIds = (existingLinks || []).map((r: any) => r.group_id);
+  const toRemove = existingIds.filter((id: string) => !groupIds.includes(id));
+  const toAdd = groupIds.filter((id) => !existingIds.includes(id));
+
+  if (toRemove.length > 0) {
+    await supabase.from("event_groups").delete().eq("event_id", eventId).in("group_id", toRemove);
+  }
+  if (toAdd.length > 0) {
+    await supabase.from("event_groups").insert(toAdd.map((group_id) => ({ event_id: eventId, group_id })));
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -169,14 +188,31 @@ serve(async (req) => {
     }
 
     switch (action) {
-      // ---- List every event ----
+      // ---- List every event, with its group_ids ----
       case "list_events": {
-        const { data, error } = await supabase
+        const { data: events, error } = await supabase
           .from("events")
           .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id")
           .order("event_date", { ascending: false });
         if (error) return json({ error: error.message }, 400);
-        return json({ events: data || [] });
+
+        const eventIds = (events || []).map((e: any) => e.id);
+        let groupsByEvent: Record<string, string[]> = {};
+        if (eventIds.length > 0) {
+          const { data: links } = await supabase.from("event_groups").select("event_id, group_id").in("event_id", eventIds);
+          (links || []).forEach((r: any) => {
+            (groupsByEvent[r.event_id] ||= []).push(r.group_id);
+          });
+        }
+        const withGroups = (events || []).map((e: any) => ({ ...e, group_ids: groupsByEvent[e.id] || [] }));
+        return json({ events: withGroups });
+      }
+
+      // ---- List every group ----
+      case "list_groups": {
+        const { data, error } = await supabase.from("task_groups").select("id, name").order("created_at", { ascending: true });
+        if (error) return json({ error: error.message }, 400);
+        return json({ groups: data || [] });
       }
 
       // ---- Create or update an event ----
@@ -187,6 +223,7 @@ serve(async (req) => {
         const eventDate = body.event_date || null;
         const location = (body.location || "").trim() || null;
         const formSchema = Array.isArray(body.form_schema) ? body.form_schema : [];
+        const groupIds: string[] = Array.isArray(body.group_ids) ? body.group_ids : [];
 
         if (!name) return json({ error: "請填寫活動名稱。" }, 400);
 
@@ -196,6 +233,7 @@ serve(async (req) => {
             .update({ name, description, event_date: eventDate, location, form_schema: formSchema })
             .eq("id", editingId);
           if (updateErr) return json({ error: updateErr.message }, 400);
+          await syncEventGroups(editingId, groupIds);
           return json({ ok: true });
         }
 
@@ -209,6 +247,8 @@ serve(async (req) => {
           .select()
           .single();
         if (insertErr) return json({ error: insertErr.message }, 400);
+
+        await syncEventGroups(newEvent.id, groupIds);
 
         // Best-effort: auto-create the registration LIFF link. A
         // failure here does NOT fail event creation — the event is
