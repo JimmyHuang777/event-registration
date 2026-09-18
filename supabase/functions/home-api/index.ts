@@ -13,14 +13,24 @@
 //     caller is listed in task_job_admins.
 //   - 流程表管理 Flow Admin (activity-flow-admin.html) — shown only
 //     if the caller is listed in activity_flow_admins.
+//   - 活動管理 Event Admin (event-admin.html) — shown only if the
+//     caller is listed in event_admins.
+//   - one entry per currently active event that already has a
+//     working LINE registration link — events have no group
+//     visibility rule of their own (unlike job templates/flows), so
+//     every active, linked event is listed for everyone.
 //
 // This function only decides WHICH entries to show (booleans) — the
-// actual liff_id for each target page is looked up by home.html
-// itself via the public liff_apps read, same as every other page.
+// actual liff_id for each fixed-purpose page is looked up by
+// home.html itself via the public liff_apps read, same as every
+// other page. Events are the one exception: each has its own unique
+// liff_id (not a shared "purpose"), so this function returns those
+// directly.
 //
 // Action:
 //   get_menu — registers/looks up the caller's `users` row (same as
-//              tasks-admin-api's whoami) and returns the flags above.
+//              tasks-admin-api's whoami) and returns the flags/list
+//              above.
 //
 // DEPLOY: this repo's GitHub Actions workflow deploys it
 // automatically on push to supabase/functions/home-api/**.
@@ -122,13 +132,15 @@ serve(async (req) => {
       existingUser = newUser;
     }
 
-    const [{ data: jobAdminRow }, { data: flowAdminRow }, { data: myGroupRows }] = await Promise.all([
+    const [{ data: jobAdminRow }, { data: flowAdminRow }, { data: eventAdminRow }, { data: myGroupRows }] = await Promise.all([
       supabase.from("task_job_admins").select("user_id").eq("user_id", existingUser.id).maybeSingle(),
       supabase.from("activity_flow_admins").select("user_id").eq("user_id", existingUser.id).maybeSingle(),
+      supabase.from("event_admins").select("user_id").eq("user_id", existingUser.id).maybeSingle(),
       supabase.from("task_group_members").select("group_id").eq("user_id", existingUser.id),
     ]);
     const isJobAdmin = !!jobAdminRow;
     const isFlowAdmin = !!flowAdminRow;
+    const isEventAdmin = !!eventAdminRow;
     const myGroupIds = new Set((myGroupRows || []).map((r: any) => r.group_id));
 
     // ---- Any task template visible to this member? ----
@@ -163,12 +175,27 @@ serve(async (req) => {
       );
     }
 
+    // ---- Active events with a working registration link ----
+    // Events have no group-visibility rule of their own, so every
+    // active event that already has a valid liff_id is listed —
+    // no per-user filtering beyond is_active.
+    const { data: eventRows } = await supabase
+      .from("events")
+      .select("id, name, event_date, location, liff_id")
+      .eq("is_active", true)
+      .order("event_date", { ascending: true });
+    const events = (eventRows || [])
+      .filter((e: any) => e.liff_id && /^\d+-[A-Za-z0-9]+$/.test(e.liff_id))
+      .map((e: any) => ({ id: e.id, name: e.name, event_date: e.event_date, location: e.location, liff_id: e.liff_id }));
+
     return json({
       user: existingUser,
       is_job_admin: isJobAdmin,
       is_flow_admin: isFlowAdmin,
+      is_event_admin: isEventAdmin,
       show_tasks: showTasks,
       show_flows: showFlows,
+      events,
     });
   } catch (err) {
     console.error(err);

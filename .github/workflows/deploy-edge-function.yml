@@ -11,6 +11,7 @@ on:
       - 'supabase/functions/flow-api/**'
       - 'supabase/functions/flow-admin-api/**'
       - 'supabase/functions/home-api/**'
+      - 'supabase/functions/events-admin-api/**'
 
 jobs:
   deploy:
@@ -59,5 +60,10 @@ jobs:
 
       - name: Deploy home-api Edge Function
         run: supabase functions deploy home-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy events-admin-api Edge Function
+        run: supabase functions deploy events-admin-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

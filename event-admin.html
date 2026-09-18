@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>活動管理 Event Admin</title>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --canvas: #F3F4F6;
+    --error: #E0453C;
+    --error-bg: #FBEAE8;
+    --blue: #2563A8;
+    --blue-bg: #E9F1FA;
+    --amber: #92650A;
+    --amber-bg: #FFF3D6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+  #app { max-width: 520px; margin: 0 auto; min-height: 100vh; background: var(--paper); display: flex; flex-direction: column; }
+  .header { background: var(--line-green); color: white; padding: 24px 20px 20px; }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 13px; opacity: 0.92; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--canvas); }
+  .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--canvas); object-fit: cover; }
+  .profile-row .name { font-size: 13.5px; font-weight: 600; }
+
+  .content { padding: 16px 20px 32px; flex: 1; }
+
+  .btn-primary {
+    width: 100%; padding: 13px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:disabled { background: #C7CAD1; cursor: not-allowed; }
+  .btn-cancel {
+    width: 100%; padding: 12px; background: var(--canvas); color: var(--ink); border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .btn-add {
+    background: none; border: 1.5px dashed #D6D9DE; border-radius: 8px; padding: 9px;
+    width: 100%; color: var(--ink-soft); font-size: 13px; cursor: pointer; font-family: inherit; margin-bottom: 14px;
+  }
+  .btn-text { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 6px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+
+  .new-event-btn { margin-bottom: 16px; }
+
+  .event-card { border: 1.5px solid var(--canvas); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .event-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .event-title { font-size: 15px; font-weight: 700; }
+  .event-meta { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .event-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .event-status.active { background: #E4F8EC; color: var(--line-green-dark); }
+  .event-status.inactive { background: var(--error-bg); color: var(--error); }
+  .event-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .event-actions .btn-text { border: 1.5px solid var(--canvas); border-radius: 8px; }
+
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 30px 10px; }
+
+  /* ---------- Form ---------- */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="date"], .field textarea, .field select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--canvas); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--paper);
+  }
+  .field textarea { min-height: 70px; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--line-green); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* ---------- Custom field builder ---------- */
+  .field-builder-item { border: 1.5px solid var(--canvas); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+  .fb-row1 { display: flex; gap: 8px; margin-bottom: 8px; }
+  .fb-row1 .fb-label { flex: 1; }
+  .fb-row1 .fb-type { width: 118px; }
+  .fb-row1 .remove-field-btn {
+    background: var(--error-bg); color: var(--error); border: none; border-radius: 8px;
+    width: 34px; font-size: 15px; cursor: pointer; flex-shrink: 0;
+  }
+  .fb-row2 { margin-bottom: 8px; }
+  .fb-row2 select, .fb-row2 input { width: 100%; }
+  .fb-required-toggle {
+    border: 1.5px solid var(--canvas); border-radius: 8px; background: var(--paper); color: var(--ink-soft);
+    font-size: 12px; padding: 5px 10px; cursor: pointer; font-family: inherit;
+  }
+  .fb-required-toggle.is-required { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bg); }
+
+  .form-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .form-actions .btn-primary, .form-actions .btn-cancel { flex: 1; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin-top: 4px; display: none; }
+  .modal-warning { color: var(--amber); font-size: 12.5px; margin-top: 10px; line-height: 1.5; }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen, #form-screen { display: none; flex-direction: column; flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="no-access-screen" class="state-screen">
+    <div class="icon-circle" style="background:var(--ink-soft);">🔒</div>
+    <h2>沒有權限 No access</h2>
+    <p>您的 LINE 帳號目前沒有管理活動的權限。<br>請聯繫管理員，在後台「管理活動」的「活動管理員」中加入您的帳號。</p>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <h1>活動管理 Event Admin</h1>
+      <p>建立與編輯活動，與後台功能相同</p>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="content">
+      <button type="button" class="btn-primary new-event-btn" id="new-event-btn">＋ 新增活動 New Event</button>
+      <div id="event-list"></div>
+    </div>
+  </div>
+
+  <div id="form-screen">
+    <div class="header">
+      <h1 id="form-title">新增活動 New Event</h1>
+      <p>建立後即可產生報名連結，無需修改任何程式碼</p>
+    </div>
+    <div class="content">
+      <div class="field">
+        <label>活動名稱 Event name</label>
+        <input type="text" id="f-name" placeholder="例：發一天元長聖道場｜辦事人員班">
+      </div>
+      <div class="field">
+        <label>活動描述 Description <span class="hint" style="margin:0;">選填，會顯示在報名頁面上</span></label>
+        <textarea id="f-description" placeholder="例：請攜帶身分證正本，並於活動前 10 分鐘完成報到。"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>日期 Date</label>
+          <input type="date" id="f-date">
+        </div>
+        <div class="field">
+          <label>地點 Location</label>
+          <input type="text" id="f-location" placeholder="例：長聖佛宮">
+        </div>
+      </div>
+      <div class="field" id="f-slug-field">
+        <label>連結代碼 Slug <span class="hint" style="margin:0;">用於報名連結，只能用英文小寫/數字/連字號</span></label>
+        <input type="text" id="f-slug" placeholder="例：banshi-2026-1101">
+        <p class="hint" id="f-slug-lock-note" style="display:none;">編輯活動時無法更改連結代碼，因為 LINE 連結已經產生。</p>
+      </div>
+
+      <div class="field">
+        <label>自訂報名欄位 Custom fields <span class="hint" style="margin:0;">選填</span></label>
+        <div id="field-builder-list"></div>
+        <button type="button" class="btn-add" id="add-field-btn">＋ 新增欄位 Add field</button>
+      </div>
+
+      <p class="modal-error" id="form-error"></p>
+      <p class="modal-warning" id="form-warning" style="display:none;"></p>
+
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" id="form-cancel-btn">取消</button>
+        <button type="button" class="btn-primary" id="form-submit-btn">儲存 Save</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+let LIFF_ID = null;
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/events-admin-api';
+
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  noAccess: document.getElementById('no-access-screen'),
+  main: document.getElementById('main-screen'),
+  form: document.getElementById('form-screen'),
+};
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'main' || key === 'form') { el.style.display = key === name ? 'flex' : 'none'; }
+    else { el.classList.toggle('active', key === name); }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let allEvents = [];
+let editingId = null;
+let fieldBuilderCount = 0;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'event_admin').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台的「管理活動」中建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    const who = await callApi('whoami');
+    if (!who.is_admin) {
+      showScreen('noAccess');
+      return;
+    }
+
+    await loadAll();
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+async function loadAll() {
+  const res = await callApi('list_events');
+  allEvents = res.events || [];
+  renderEventList();
+}
+
+/* ---------- Event list ---------- */
+
+function isValidLiffId(liffId) {
+  return !!liffId && /^\d+-[A-Za-z0-9]+$/.test(liffId);
+}
+
+function renderEventList() {
+  const listEl = document.getElementById('event-list');
+  if (allEvents.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">尚無活動。</div>';
+    return;
+  }
+  listEl.innerHTML = allEvents.map(ev => `
+    <div class="event-card" data-id="${ev.id}">
+      <div class="event-card-top">
+        <div class="event-title">${escapeHtml(ev.name)}</div>
+        <span class="event-status ${ev.is_active ? 'active' : 'inactive'}">${ev.is_active ? '啟用中' : '已停用'}</span>
+      </div>
+      <div class="event-meta">${ev.event_date || '日期未定'}${ev.location ? '・📍 ' + escapeHtml(ev.location) : ''}</div>
+      <div class="event-meta">${isValidLiffId(ev.liff_id) ? '已建立 LINE 連結' : '⚠️ 尚未建立 LINE 連結，請於後台「管理活動」重新產生'}</div>
+      <div class="event-actions">
+        <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
+        <button type="button" class="btn-text" data-action="toggle">${ev.is_active ? '停用' : '啟用'}</button>
+        <button type="button" class="btn-text danger" data-action="delete">刪除 Delete</button>
+      </div>
+    </div>`).join('');
+
+  listEl.querySelectorAll('.event-card').forEach(card => {
+    const id = card.dataset.id;
+    card.querySelector('[data-action="edit"]').addEventListener('click', () => openForm(allEvents.find(e => e.id === id)));
+    card.querySelector('[data-action="toggle"]').addEventListener('click', async () => {
+      const ev = allEvents.find(e => e.id === id);
+      try {
+        await callApi('toggle_event_active', { id, is_active: !ev.is_active });
+        await loadAll();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+      }
+    });
+    card.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+      const ev = allEvents.find(e => e.id === id);
+      if (!confirm(`確定要刪除「${ev ? ev.name : ''}」嗎？此動作無法復原，報名資料也會一併刪除。`)) return;
+      try {
+        await callApi('delete_event', { id });
+        await loadAll();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+      }
+    });
+  });
+}
+
+document.getElementById('new-event-btn').addEventListener('click', () => openForm(null));
+
+/* ---------- Custom field builder (same shape as the dashboard's) ---------- */
+
+function addFieldBuilderRow(prefill) {
+  const id = 'fb-' + (fieldBuilderCount++);
+  const isRequired = !!(prefill && prefill.required);
+  const wrap = document.createElement('div');
+  wrap.className = 'field-builder-item';
+  wrap.dataset.rowId = id;
+  wrap.dataset.required = isRequired ? '1' : '0';
+
+  wrap.innerHTML = `
+    <div class="fb-row1">
+      <input type="text" class="fb-label" placeholder="欄位名稱 (例: 佛堂)" value="${prefill ? escapeHtml(prefill.label || '') : ''}">
+      <select class="fb-type">
+        <option value="select" ${prefill && prefill.type === 'select' ? 'selected' : ''}>下拉選單</option>
+        <option value="toggle" ${prefill && prefill.type === 'toggle' ? 'selected' : ''}>按鈕 (兩選一)</option>
+        <option value="text" ${prefill && prefill.type === 'text' ? 'selected' : ''}>文字輸入</option>
+      </select>
+      <button type="button" class="remove-field-btn">✕</button>
+    </div>
+    <div class="fb-row2">
+      <input type="text" class="fb-options" placeholder="選項，用逗號分隔 (例: 培賢,妙覺,崇義)" value="${prefill && prefill.type === 'select' && prefill.options ? escapeHtml(prefill.options.join(',')) : ''}">
+      <select class="fb-toggle-preset">
+        <option value="需要,不需要">需要 / 不需要</option>
+        <option value="是,否">是 / 否</option>
+      </select>
+    </div>
+    <button type="button" class="fb-required-toggle ${isRequired ? 'is-required' : ''}">${isRequired ? '必填' : '選填'}</button>
+  `;
+  document.getElementById('field-builder-list').appendChild(wrap);
+
+  const typeSelect = wrap.querySelector('.fb-type');
+  const optionsInput = wrap.querySelector('.fb-options');
+  const togglePreset = wrap.querySelector('.fb-toggle-preset');
+
+  if (prefill && prefill.type === 'toggle' && prefill.options) {
+    const joined = prefill.options.join(',');
+    if ([...togglePreset.options].some(o => o.value === joined)) togglePreset.value = joined;
+  }
+
+  function syncFieldTypeUI() {
+    const type = typeSelect.value;
+    optionsInput.style.display = type === 'select' ? 'block' : 'none';
+    togglePreset.style.display = type === 'toggle' ? 'block' : 'none';
+  }
+  typeSelect.addEventListener('change', syncFieldTypeUI);
+  syncFieldTypeUI();
+
+  wrap.querySelector('.remove-field-btn').addEventListener('click', () => wrap.remove());
+
+  const requiredBtn = wrap.querySelector('.fb-required-toggle');
+  requiredBtn.addEventListener('click', () => {
+    const nowRequired = wrap.dataset.required !== '1';
+    wrap.dataset.required = nowRequired ? '1' : '0';
+    requiredBtn.textContent = nowRequired ? '必填' : '選填';
+    requiredBtn.classList.toggle('is-required', nowRequired);
+  });
+}
+document.getElementById('add-field-btn').addEventListener('click', () => addFieldBuilderRow());
+
+function collectFormSchema() {
+  const formSchema = [];
+  document.querySelectorAll('#field-builder-list .field-builder-item').forEach(row => {
+    const label = row.querySelector('.fb-label').value.trim();
+    if (!label) return;
+    const type = row.querySelector('.fb-type').value;
+    const required = row.dataset.required === '1';
+    const fieldId = label.toLowerCase().replace(/[^\w一-鿿]+/g, '_').replace(/^_+|_+$/g, '') || ('field_' + formSchema.length);
+    const field = { id: fieldId, label, type, required };
+    if (type === 'select') {
+      const opts = row.querySelector('.fb-options').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (opts.length === 0) return;
+      field.options = opts;
+    }
+    if (type === 'toggle') {
+      field.options = row.querySelector('.fb-toggle-preset').value.split(',');
+    }
+    formSchema.push(field);
+  });
+  return formSchema;
+}
+
+/* ---------- Form ---------- */
+
+function openForm(ev) {
+  editingId = ev ? ev.id : null;
+  document.getElementById('form-title').textContent = ev ? '編輯活動 Edit Event' : '新增活動 New Event';
+  document.getElementById('form-error').style.display = 'none';
+  document.getElementById('form-warning').style.display = 'none';
+
+  document.getElementById('f-name').value = ev ? ev.name : '';
+  document.getElementById('f-description').value = ev ? (ev.description || '') : '';
+  document.getElementById('f-date').value = ev ? (ev.event_date || '') : '';
+  document.getElementById('f-location').value = ev ? (ev.location || '') : '';
+  document.getElementById('f-slug').value = ev ? (ev.slug || '') : '';
+  document.getElementById('f-slug').disabled = !!ev;
+  document.getElementById('f-slug-lock-note').style.display = ev ? 'block' : 'none';
+
+  document.getElementById('field-builder-list').innerHTML = '';
+  (ev ? (ev.form_schema || []) : []).forEach(f => addFieldBuilderRow(f));
+
+  showScreen('form');
+}
+
+document.getElementById('form-cancel-btn').addEventListener('click', () => showScreen('main'));
+
+document.getElementById('form-submit-btn').addEventListener('click', async () => {
+  const errorEl = document.getElementById('form-error');
+  const warningEl = document.getElementById('form-warning');
+  errorEl.style.display = 'none';
+  warningEl.style.display = 'none';
+
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) {
+    errorEl.textContent = '請填寫活動名稱。';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const payload = {
+    editing_id: editingId,
+    name,
+    description: document.getElementById('f-description').value.trim() || null,
+    event_date: document.getElementById('f-date').value || null,
+    location: document.getElementById('f-location').value.trim() || null,
+    form_schema: collectFormSchema(),
+  };
+  if (!editingId) {
+    payload.slug = document.getElementById('f-slug').value.trim();
+    if (!payload.slug) {
+      errorEl.textContent = '請填寫連結代碼。';
+      errorEl.style.display = 'block';
+      return;
+    }
+  }
+
+  const submitBtn = document.getElementById('form-submit-btn');
+  submitBtn.disabled = true;
+  try {
+    const result = await callApi('save_event', payload);
+    if (result.warning) {
+      warningEl.textContent = result.warning;
+      warningEl.style.display = 'block';
+    }
+    await loadAll();
+    if (result.warning) {
+      // Stay on the form briefly so the admin sees the LIFF-link
+      // warning, rather than it flashing by on the way back to the list.
+      setTimeout(() => showScreen('main'), 2200);
+    } else {
+      showScreen('main');
+    }
+  } catch (err) {
+    errorEl.textContent = '儲存失敗：' + err.message;
+    errorEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+initLiff();
+</script>
+
+</body>
+</html>
