@@ -26,6 +26,9 @@
 //   toggle_flow_active — flip a flow's is_active flag.
 //   delete_flow       — delete a flow (cascades to its items and
 //                        group links).
+//   list_presets      — every saved flow preset.
+//   save_preset       — create or overwrite a preset (by name).
+//   delete_preset     — delete a preset.
 //
 // DEPLOY: this repo's GitHub Actions workflow deploys it
 // automatically on push to supabase/functions/flow-admin-api/**.
@@ -174,6 +177,59 @@ serve(async (req) => {
           .order("created_at", { ascending: true });
         if (error) return json({ error: error.message }, 400);
         return json({ groups: data || [] });
+      }
+
+      // ---- All saved flow presets ----
+      case "list_presets": {
+        const { data, error } = await supabase
+          .from("activity_flow_presets")
+          .select("*")
+          .order("name", { ascending: true });
+        if (error) return json({ error: error.message }, 400);
+        return json({ presets: data || [] });
+      }
+
+      // ---- Save (create or overwrite by name) a flow preset ----
+      case "save_preset": {
+        const { name, flow_name, host, facilitator, location, address, start_date, end_date, items, group_ids } = body;
+        const cleanName = (name || "").trim();
+        const cleanFlowName = (flow_name || "").trim();
+        if (!cleanName) return json({ error: "請填寫範本名稱。" }, 400);
+        if (!cleanFlowName) return json({ error: "請填寫班程名稱。" }, 400);
+
+        const payload = {
+          name: cleanName,
+          flow_name: cleanFlowName,
+          host: host ? String(host).trim() : null,
+          facilitator: facilitator ? String(facilitator).trim() : null,
+          location: location ? String(location).trim() : null,
+          address: address ? String(address).trim() : null,
+          start_date: start_date || null,
+          end_date: end_date || null,
+          items: (Array.isArray(items) ? items : [])
+            .map((it: any) => ({
+              item_date: it ? it.item_date : null,
+              start_time: it ? it.start_time : null,
+              end_time: it && it.end_time ? it.end_time : null,
+              title: ((it && it.title) || "").trim(),
+            }))
+            .filter((it: any) => it.title),
+          group_ids: Array.isArray(group_ids) ? group_ids : [],
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error } = await supabase.from("activity_flow_presets").upsert(payload, { onConflict: "name" });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
+      // ---- Delete a flow preset ----
+      case "delete_preset": {
+        const { id } = body;
+        if (!id) return json({ error: "Missing id." }, 400);
+        const { error } = await supabase.from("activity_flow_presets").delete().eq("id", id);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       // ---- Create or update a flow sheet ----

@@ -82,6 +82,11 @@
   .field input:focus, .field select:focus { outline: none; border-color: var(--line-green); }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+  .preset-row { display: flex; gap: 8px; align-items: center; }
+  .preset-row select { flex: 1; }
+  .preset-row .btn-text { border: 1.5px solid var(--canvas); border-radius: 8px; white-space: nowrap; }
+  .save-preset-row { margin-top: 8px; }
+
   .preview-box {
     background: var(--canvas); border-radius: 8px; padding: 10px 12px; font-size: 12.5px;
     color: var(--ink-soft); line-height: 1.7; margin-top: -4px; margin-bottom: 14px;
@@ -185,6 +190,16 @@
     </div>
     <div class="content">
       <div class="field">
+        <label>套用已存範本 Apply a saved preset</label>
+        <div class="preset-row">
+          <select id="preset-select"><option value="">— 選擇範本 Choose a preset —</option></select>
+          <button type="button" class="btn-text" id="preset-apply-btn">套用</button>
+          <button type="button" class="btn-text danger" id="preset-delete-btn">刪除</button>
+        </div>
+        <div class="hint">套用後覆蓋名稱／主班人／操持／地點／地址／開始結束日期／課程流程／群組</div>
+      </div>
+
+      <div class="field">
         <label>班程名稱 Name</label>
         <input type="text" id="f-name" placeholder="例：辦事人員研習班">
       </div>
@@ -221,7 +236,7 @@
       </div>
 
       <div class="field">
-        <label>課程流程 Schedule <span class="hint" style="margin:0;">依日期分頁新增，會自動依時間排序</span></label>
+        <label>課程流程 Schedule <span class="hint" style="margin:0;">依日期分頁新增，新項目會排在最後</span></label>
         <div class="day-tabs" id="form-day-tabs"></div>
         <div class="item-row-labels">
           <span>開始</span><span>結束(選填)</span><span>項目內容</span><span></span>
@@ -240,6 +255,9 @@
       <div class="form-actions">
         <button type="button" class="btn-cancel" id="form-cancel-btn">取消</button>
         <button type="button" class="btn-primary" id="form-submit-btn">儲存 Save</button>
+      </div>
+      <div class="save-preset-row">
+        <button type="button" class="btn-text" id="save-preset-btn">另存為範本 Save as preset</button>
       </div>
     </div>
   </div>
@@ -277,6 +295,7 @@ let idToken = null;
 let lineProfile = null;
 let allFlows = [];
 let allGroups = [];
+let allPresets = [];
 let editingId = null;
 let formItems = []; // { rowId, id, item_date, start_time, end_time, title }
 let itemRowCount = 0;
@@ -429,14 +448,111 @@ document.getElementById('relogin-btn').addEventListener('click', () => {
 });
 
 async function loadAll() {
-  const [flowRes, groupRes] = await Promise.all([
+  const [flowRes, groupRes, presetRes] = await Promise.all([
     callApi('list_flows'),
     callApi('list_groups'),
+    callApi('list_presets'),
   ]);
   allFlows = flowRes.flows || [];
   allGroups = groupRes.groups || [];
+  allPresets = presetRes.presets || [];
   renderFlowList();
+  renderPresetSelect();
 }
+
+/* ---------- Presets ---------- */
+
+function renderPresetSelect() {
+  const sel = document.getElementById('preset-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— 選擇範本 Choose a preset —</option>' +
+    allPresets.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  if (allPresets.some(p => p.id === prev)) sel.value = prev;
+}
+
+document.getElementById('preset-apply-btn').addEventListener('click', () => {
+  const presetId = document.getElementById('preset-select').value;
+  if (!presetId) { alert('請先選擇一個範本。'); return; }
+  const preset = allPresets.find(p => p.id === presetId);
+  if (!preset) return;
+  if (!confirm(`套用範本「${preset.name}」將覆蓋目前表單中的名稱／主班人／操持／地點／地址／開始結束日期／課程流程／群組內容。確定要套用嗎？`)) return;
+
+  document.getElementById('f-name').value = preset.flow_name || '';
+  document.getElementById('f-host').value = preset.host || '';
+  document.getElementById('f-facilitator').value = preset.facilitator || '';
+  document.getElementById('f-location').value = preset.location || '';
+  document.getElementById('f-address').value = preset.address || '';
+  document.getElementById('f-start-date').value = preset.start_date || '';
+  document.getElementById('f-end-date').value = preset.end_date || '';
+  updateDatePreview();
+
+  itemRowCount = 0;
+  formItems = (preset.items || []).map(it => ({
+    rowId: 'ir-' + (itemRowCount++),
+    id: null,
+    item_date: it.item_date,
+    start_time: (it.start_time || '').slice(0, 5),
+    end_time: (it.end_time || '').slice(0, 5),
+    title: it.title,
+  }));
+  activeDayStr = null;
+  renderDayTabs();
+
+  const presetGroupIds = new Set((preset.group_ids || []).filter(id => allGroups.some(g => g.id === id)));
+  renderGroupChips(presetGroupIds);
+});
+
+document.getElementById('preset-delete-btn').addEventListener('click', async () => {
+  const presetId = document.getElementById('preset-select').value;
+  if (!presetId) { alert('請先選擇一個範本。'); return; }
+  const preset = allPresets.find(p => p.id === presetId);
+  if (!preset) return;
+  if (!confirm(`確定要刪除範本「${preset.name}」嗎？（不影響已經套用出去的流程表，只是刪除這個可重複套用的存檔）`)) return;
+  try {
+    await callApi('delete_preset', { id: presetId });
+    const presetRes = await callApi('list_presets');
+    allPresets = presetRes.presets || [];
+    renderPresetSelect();
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
+  }
+});
+
+document.getElementById('save-preset-btn').addEventListener('click', async () => {
+  const flowName = document.getElementById('f-name').value.trim();
+  if (!flowName) { alert('請先填寫班程名稱，才能另存為範本。'); return; }
+
+  const name = prompt('範本名稱 Preset name（用於稍後在下拉選單中辨識，可以跟班程名稱不同）：', flowName);
+  if (name === null) return;
+  const presetName = name.trim();
+  if (!presetName) return;
+
+  const items = formItems
+    .filter(it => it.title && it.title.trim())
+    .map(it => ({ item_date: it.item_date, start_time: it.start_time, end_time: it.end_time || null, title: it.title.trim() }));
+
+  const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
+
+  try {
+    await callApi('save_preset', {
+      name: presetName,
+      flow_name: flowName,
+      host: document.getElementById('f-host').value.trim() || null,
+      facilitator: document.getElementById('f-facilitator').value.trim() || null,
+      location: document.getElementById('f-location').value.trim() || null,
+      address: document.getElementById('f-address').value.trim() || null,
+      start_date: document.getElementById('f-start-date').value || null,
+      end_date: document.getElementById('f-end-date').value || null,
+      items, group_ids,
+    });
+    alert('範本已儲存！');
+    const presetRes = await callApi('list_presets');
+    allPresets = presetRes.presets || [];
+    renderPresetSelect();
+  } catch (err) {
+    alert('儲存範本失敗：' + err.message);
+  }
+});
 
 /* ---------- Flow list ---------- */
 
@@ -608,6 +724,7 @@ function openForm(flow) {
   const checkedGroupIds = new Set(flow ? (flow.group_ids || []) : []);
   renderGroupChips(checkedGroupIds);
 
+  renderPresetSelect();
   showScreen('form');
 }
 
