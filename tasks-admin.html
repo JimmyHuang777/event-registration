@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>工作管理 Job Admin</title>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --canvas: #F3F4F6;
+    --error: #E0453C;
+    --error-bg: #FBEAE8;
+    --blue: #2563A8;
+    --blue-bg: #E9F1FA;
+    --amber: #92650A;
+    --amber-bg: #FFF3D6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+  #app { max-width: 520px; margin: 0 auto; min-height: 100vh; background: var(--paper); display: flex; flex-direction: column; }
+  .header { background: var(--line-green); color: white; padding: 24px 20px 20px; }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 13px; opacity: 0.92; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--canvas); }
+  .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--canvas); object-fit: cover; }
+  .profile-row .name { font-size: 13.5px; font-weight: 600; }
+
+  .content { padding: 16px 20px 32px; flex: 1; }
+
+  .btn-primary {
+    width: 100%; padding: 13px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:disabled { background: #C7CAD1; cursor: not-allowed; }
+  .btn-cancel {
+    width: 100%; padding: 12px; background: var(--canvas); color: var(--ink); border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .btn-add {
+    background: none; border: 1.5px dashed #D6D9DE; border-radius: 8px; padding: 9px;
+    width: 100%; color: var(--ink-soft); font-size: 13px; cursor: pointer; font-family: inherit; margin-bottom: 14px;
+  }
+  .btn-text { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 6px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+
+  .new-job-btn { margin-bottom: 16px; }
+
+  .job-card { border: 1.5px solid var(--canvas); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .job-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .job-title { font-size: 15px; font-weight: 700; }
+  .job-desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; line-height: 1.5; }
+  .job-meta { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .job-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .job-status.active { background: #E4F8EC; color: var(--line-green-dark); }
+  .job-status.inactive { background: var(--error-bg); color: var(--error); }
+  .job-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .job-actions .btn-text { border: 1.5px solid var(--canvas); border-radius: 8px; }
+
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 30px 10px; }
+
+  /* ---------- Form ---------- */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"], .field textarea, .field select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--canvas); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--paper);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--line-green); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .subtask-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .subtask-row input { flex: 1; }
+  .subtask-row .remove-btn {
+    background: var(--error-bg); color: var(--error); border: none; border-radius: 8px;
+    width: 36px; font-size: 15px; cursor: pointer;
+  }
+
+  .group-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .group-chip { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 20px; border: 1.5px solid var(--canvas); font-size: 12.5px; cursor: pointer; }
+  .group-chip.checked { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+  .group-chip input { width: 14px; height: 14px; }
+  .no-groups-note { font-size: 12.5px; color: var(--ink-soft); }
+
+  .preset-row { display: flex; gap: 8px; align-items: center; }
+  .preset-row select { flex: 1; }
+  .preset-row .btn-text { border: 1.5px solid var(--canvas); border-radius: 8px; white-space: nowrap; }
+
+  .form-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .form-actions .btn-primary, .form-actions .btn-cancel { flex: 1; }
+  .save-preset-row { margin-top: 8px; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin-top: 4px; display: none; }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen, #form-screen { display: none; flex-direction: column; flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="no-access-screen" class="state-screen">
+    <div class="icon-circle" style="background:var(--ink-soft);">🔒</div>
+    <h2>沒有權限 No access</h2>
+    <p>您的 LINE 帳號目前沒有管理工作的權限。<br>請聯繫管理員，在後台「任務管理」的「工作管理員」中加入您的帳號。</p>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <h1>工作管理 Job Admin</h1>
+      <p>建立與編輯工作範本，與後台功能相同</p>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="content">
+      <button type="button" class="btn-primary new-job-btn" id="new-job-btn">＋ 新增工作 New Job</button>
+      <div id="job-list"></div>
+    </div>
+  </div>
+
+  <div id="form-screen">
+    <div class="header">
+      <h1 id="form-title">新增工作 New Job</h1>
+      <p>儲存後立即生效，成員可在任務頁面看到</p>
+    </div>
+    <div class="content">
+      <div class="field">
+        <label>套用已存範本 Apply a saved preset</label>
+        <div class="preset-row">
+          <select id="preset-select"><option value="">— 選擇範本 Choose a preset —</option></select>
+          <button type="button" class="btn-text" id="preset-apply-btn">套用</button>
+          <button type="button" class="btn-text danger" id="preset-delete-btn">刪除</button>
+        </div>
+        <div class="hint">套用後覆蓋名稱／說明／地點／開始結束日期／子項目／群組，不含頻率、星期幾或幾號、單次日期、需求人數</div>
+      </div>
+
+      <div class="field">
+        <label>工作名稱 Title</label>
+        <input type="text" id="f-title" placeholder="例：打掃大殿 Sweep the main hall">
+      </div>
+      <div class="field">
+        <label>說明 Description <span class="hint" style="margin:0;">選填</span></label>
+        <input type="text" id="f-description" placeholder="例：請於上午 8 點前完成">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>頻率 Recurrence</label>
+          <select id="f-recurrence">
+            <option value="daily">每日 Daily</option>
+            <option value="weekly">每週 Weekly</option>
+            <option value="monthly">每月 Monthly</option>
+            <option value="once">單次 One-time</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>需求人數 Slots</label>
+          <input type="number" id="f-slots" min="1" value="1">
+        </div>
+      </div>
+      <div class="field" id="f-weekly-field" style="display:none;">
+        <label>星期幾 Day of week</label>
+        <select id="f-day-of-week">
+          <option value="0">週日 Sunday</option>
+          <option value="1">週一 Monday</option>
+          <option value="2">週二 Tuesday</option>
+          <option value="3">週三 Wednesday</option>
+          <option value="4">週四 Thursday</option>
+          <option value="5">週五 Friday</option>
+          <option value="6">週六 Saturday</option>
+        </select>
+      </div>
+      <div class="field" id="f-monthly-field" style="display:none;">
+        <label>每月幾號 Day of month</label>
+        <input type="number" id="f-day-of-month" min="1" max="31" value="1">
+      </div>
+      <div class="field">
+        <label>地點 Place <span class="hint" style="margin:0;">選填</span></label>
+        <input type="text" id="f-place" placeholder="例：大殿 Main hall">
+      </div>
+      <div class="field" id="f-once-date-field" style="display:none;">
+        <label>日期 Date <span class="hint" style="margin:0;">此工作只會在這一天出現一次</span></label>
+        <input type="date" id="f-once-date">
+      </div>
+      <div class="field-row" id="f-date-range-row">
+        <div class="field">
+          <label>開始日期 Start <span class="hint" style="margin:0;">選填</span></label>
+          <input type="date" id="f-start-date">
+        </div>
+        <div class="field">
+          <label>結束日期 End <span class="hint" style="margin:0;">選填</span></label>
+          <input type="date" id="f-end-date">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>子項目清單 Subtasks <span class="hint" style="margin:0;">選填</span></label>
+        <div id="subtask-list"></div>
+        <button type="button" class="btn-add" id="add-subtask-btn">＋ 新增子項目 Add subtask</button>
+      </div>
+
+      <div class="field">
+        <label>適用群組 Groups <span class="hint" style="margin:0;">選填，不勾選則所有人都能看到</span></label>
+        <div class="group-chip-list" id="group-chip-list"></div>
+      </div>
+
+      <p class="modal-error" id="form-error"></p>
+
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" id="form-cancel-btn">取消</button>
+        <button type="button" class="btn-primary" id="form-submit-btn">儲存 Save</button>
+      </div>
+      <div class="save-preset-row">
+        <button type="button" class="btn-text" id="save-preset-btn">另存為範本 Save as preset</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+let LIFF_ID = null;
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/tasks-admin-api';
+
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  noAccess: document.getElementById('no-access-screen'),
+  main: document.getElementById('main-screen'),
+  form: document.getElementById('form-screen'),
+};
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'main' || key === 'form') { el.style.display = key === name ? 'flex' : 'none'; }
+    else { el.classList.toggle('active', key === name); }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let allTemplates = [];
+let allGroups = [];
+let allPresets = [];
+let editingId = null;
+let subtaskRowCount = 0;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'tasks_admin').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台的「任務管理」中建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    const who = await callApi('whoami');
+    if (!who.is_admin) {
+      showScreen('noAccess');
+      return;
+    }
+
+    await loadAll();
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+async function loadAll() {
+  const [tplRes, groupRes, presetRes] = await Promise.all([
+    callApi('list_templates'),
+    callApi('list_groups'),
+    callApi('list_presets'),
+  ]);
+  allTemplates = tplRes.templates || [];
+  allGroups = groupRes.groups || [];
+  allPresets = presetRes.presets || [];
+  renderJobList();
+  renderPresetSelect();
+}
+
+/* ---------- Job list ---------- */
+
+const RECURRENCE_LABELS = { daily: '每日 Daily', weekly: '每週 Weekly', monthly: '每月 Monthly', once: '單次 One-time' };
+
+function renderJobList() {
+  const listEl = document.getElementById('job-list');
+  if (allTemplates.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">尚無工作範本。</div>';
+    return;
+  }
+  listEl.innerHTML = allTemplates.map(t => `
+    <div class="job-card" data-id="${t.id}">
+      <div class="job-card-top">
+        <div>
+          <div class="job-title">${escapeHtml(t.title)}</div>
+          ${t.description ? `<div class="job-desc">${escapeHtml(t.description)}</div>` : ''}
+        </div>
+        <span class="job-status ${t.is_active ? 'active' : 'inactive'}">${t.is_active ? '啟用中' : '已停用'}</span>
+      </div>
+      <div class="job-meta">${RECURRENCE_LABELS[t.recurrence] || t.recurrence}・需求 ${t.slots_per_instance} 人${t.place ? '・📍 ' + escapeHtml(t.place) : ''}${t.subtasks.length ? '・子項目 ' + t.subtasks.length + ' 項' : ''}</div>
+      <div class="job-actions">
+        <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
+        <button type="button" class="btn-text" data-action="toggle">${t.is_active ? '停用' : '啟用'}</button>
+        <button type="button" class="btn-text danger" data-action="delete">刪除 Delete</button>
+      </div>
+    </div>`).join('');
+
+  listEl.querySelectorAll('.job-card').forEach(card => {
+    const id = card.dataset.id;
+    card.querySelector('[data-action="edit"]').addEventListener('click', () => openForm(allTemplates.find(t => t.id === id)));
+    card.querySelector('[data-action="toggle"]').addEventListener('click', async () => {
+      try {
+        await callApi('toggle_template_active', { id });
+        await loadAll();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+      }
+    });
+    card.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+      const t = allTemplates.find(x => x.id === id);
+      if (!confirm(`確定要刪除「${t ? t.title : ''}」嗎？此動作無法復原。`)) return;
+      try {
+        await callApi('delete_template', { id });
+        await loadAll();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+      }
+    });
+  });
+}
+
+document.getElementById('new-job-btn').addEventListener('click', () => openForm(null));
+
+/* ---------- Form ---------- */
+
+function addSubtaskRow(prefill) {
+  const id = 'sb-' + (subtaskRowCount++);
+  const wrap = document.createElement('div');
+  wrap.className = 'subtask-row';
+  wrap.dataset.rowId = id;
+  wrap.dataset.subtaskId = (prefill && prefill.id) || '';
+  wrap.innerHTML = `
+    <input type="text" class="sb-title" placeholder="例：關閉電燈" value="${prefill ? escapeHtml(prefill.title || '') : ''}">
+    <button type="button" class="remove-btn">✕</button>
+  `;
+  document.getElementById('subtask-list').appendChild(wrap);
+  wrap.querySelector('.remove-btn').addEventListener('click', () => wrap.remove());
+}
+document.getElementById('add-subtask-btn').addEventListener('click', () => addSubtaskRow());
+
+function renderGroupChips(checkedGroupIds) {
+  const wrap = document.getElementById('group-chip-list');
+  if (allGroups.length === 0) {
+    wrap.innerHTML = '<span class="no-groups-note">尚未建立任何群組。</span>';
+    return;
+  }
+  wrap.innerHTML = allGroups.map(g => `
+    <label class="group-chip ${checkedGroupIds.has(g.id) ? 'checked' : ''}">
+      <input type="checkbox" value="${g.id}" ${checkedGroupIds.has(g.id) ? 'checked' : ''}>
+      ${escapeHtml(g.name)}
+    </label>
+  `).join('');
+  wrap.querySelectorAll('.group-chip input').forEach(cb => {
+    cb.addEventListener('change', () => cb.closest('.group-chip').classList.toggle('checked', cb.checked));
+  });
+}
+
+function syncRecurrenceFieldVisibility() {
+  const rec = document.getElementById('f-recurrence').value;
+  document.getElementById('f-weekly-field').style.display = rec === 'weekly' ? 'block' : 'none';
+  document.getElementById('f-monthly-field').style.display = rec === 'monthly' ? 'block' : 'none';
+  document.getElementById('f-once-date-field').style.display = rec === 'once' ? 'block' : 'none';
+  document.getElementById('f-date-range-row').style.display = rec === 'once' ? 'none' : 'grid';
+}
+document.getElementById('f-recurrence').addEventListener('change', syncRecurrenceFieldVisibility);
+
+function openForm(tpl) {
+  editingId = tpl ? tpl.id : null;
+  document.getElementById('form-title').textContent = tpl ? '編輯工作 Edit Job' : '新增工作 New Job';
+  document.getElementById('form-error').style.display = 'none';
+
+  document.getElementById('f-title').value = tpl ? tpl.title : '';
+  document.getElementById('f-description').value = tpl ? (tpl.description || '') : '';
+  document.getElementById('f-recurrence').value = tpl ? tpl.recurrence : 'daily';
+  document.getElementById('f-slots').value = tpl ? tpl.slots_per_instance : 1;
+  document.getElementById('f-place').value = tpl ? (tpl.place || '') : '';
+  document.getElementById('f-start-date').value = (tpl && tpl.recurrence !== 'once') ? (tpl.start_date || '') : '';
+  document.getElementById('f-end-date').value = (tpl && tpl.recurrence !== 'once') ? (tpl.end_date || '') : '';
+  document.getElementById('f-once-date').value = (tpl && tpl.recurrence === 'once') ? (tpl.start_date || '') : '';
+  const detail = (tpl && tpl.recurrence_detail) || {};
+  document.getElementById('f-day-of-week').value = detail.day_of_week ?? '0';
+  document.getElementById('f-day-of-month').value = detail.day_of_month ?? '1';
+  syncRecurrenceFieldVisibility();
+
+  document.getElementById('subtask-list').innerHTML = '';
+  (tpl ? tpl.subtasks : []).forEach(s => addSubtaskRow(s));
+
+  const checkedGroupIds = new Set(tpl ? (tpl.group_ids || []) : []);
+  renderGroupChips(checkedGroupIds);
+
+  renderPresetSelect();
+  showScreen('form');
+}
+
+document.getElementById('form-cancel-btn').addEventListener('click', () => showScreen('main'));
+
+document.getElementById('form-submit-btn').addEventListener('click', async () => {
+  const errorEl = document.getElementById('form-error');
+  errorEl.style.display = 'none';
+
+  const title = document.getElementById('f-title').value.trim();
+  if (!title) {
+    errorEl.textContent = '請填寫工作名稱。';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const recurrence = document.getElementById('f-recurrence').value;
+  let recurrence_detail = {};
+  if (recurrence === 'weekly') recurrence_detail = { day_of_week: parseInt(document.getElementById('f-day-of-week').value, 10) };
+  if (recurrence === 'monthly') recurrence_detail = { day_of_month: parseInt(document.getElementById('f-day-of-month').value, 10) };
+
+  let start_date, end_date;
+  if (recurrence === 'once') {
+    const onceDate = document.getElementById('f-once-date').value || null;
+    if (!onceDate) {
+      errorEl.textContent = '請選擇單次工作的日期。';
+      errorEl.style.display = 'block';
+      return;
+    }
+    start_date = onceDate;
+    end_date = onceDate;
+  } else {
+    start_date = document.getElementById('f-start-date').value || null;
+    end_date = document.getElementById('f-end-date').value || null;
+    if (start_date && end_date && start_date > end_date) {
+      errorEl.textContent = '開始日期不能晚於結束日期。';
+      errorEl.style.display = 'block';
+      return;
+    }
+  }
+
+  const subtasks = [...document.querySelectorAll('#subtask-list .subtask-row')]
+    .map(row => ({ id: row.dataset.subtaskId || null, title: row.querySelector('.sb-title').value.trim() }))
+    .filter(s => s.title);
+
+  const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
+
+  const payload = {
+    id: editingId,
+    title,
+    description: document.getElementById('f-description').value.trim() || null,
+    recurrence,
+    recurrence_detail,
+    slots_per_instance: parseInt(document.getElementById('f-slots').value, 10) || 1,
+    place: document.getElementById('f-place').value.trim() || null,
+    start_date, end_date,
+    subtasks, group_ids,
+  };
+
+  const submitBtn = document.getElementById('form-submit-btn');
+  submitBtn.disabled = true;
+  try {
+    await callApi('save_template', payload);
+    await loadAll();
+    showScreen('main');
+  } catch (err) {
+    errorEl.textContent = '儲存失敗：' + err.message;
+    errorEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+/* ---------- Presets ---------- */
+
+function renderPresetSelect() {
+  const sel = document.getElementById('preset-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— 選擇範本 Choose a preset —</option>' +
+    allPresets.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  if (allPresets.some(p => p.id === prev)) sel.value = prev;
+}
+
+document.getElementById('preset-apply-btn').addEventListener('click', () => {
+  const presetId = document.getElementById('preset-select').value;
+  if (!presetId) { alert('請先選擇一個範本。'); return; }
+  const preset = allPresets.find(p => p.id === presetId);
+  if (!preset) return;
+  if (!confirm(`套用範本「${preset.name}」將覆蓋目前表單中的名稱／說明／地點／開始結束日期／子項目／群組內容。確定要套用嗎？`)) return;
+
+  document.getElementById('f-title').value = preset.title || '';
+  document.getElementById('f-description').value = preset.description || '';
+  document.getElementById('f-place').value = preset.place || '';
+  if (document.getElementById('f-recurrence').value !== 'once') {
+    document.getElementById('f-start-date').value = preset.start_date || '';
+    document.getElementById('f-end-date').value = preset.end_date || '';
+  }
+  document.getElementById('subtask-list').innerHTML = '';
+  (preset.subtasks || []).forEach(s => addSubtaskRow({ title: s.title }));
+  const presetGroupIds = new Set((preset.group_ids || []).filter(id => allGroups.some(g => g.id === id)));
+  renderGroupChips(presetGroupIds);
+});
+
+document.getElementById('preset-delete-btn').addEventListener('click', async () => {
+  const presetId = document.getElementById('preset-select').value;
+  if (!presetId) { alert('請先選擇一個範本。'); return; }
+  const preset = allPresets.find(p => p.id === presetId);
+  if (!preset) return;
+  if (!confirm(`確定要刪除範本「${preset.name}」嗎？`)) return;
+  try {
+    await callApi('delete_preset', { id: presetId });
+    const presetRes = await callApi('list_presets');
+    allPresets = presetRes.presets || [];
+    renderPresetSelect();
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
+  }
+});
+
+document.getElementById('save-preset-btn').addEventListener('click', async () => {
+  const title = document.getElementById('f-title').value.trim();
+  if (!title) { alert('請先填寫工作名稱，才能另存為範本。'); return; }
+
+  const name = prompt('範本名稱 Preset name（用於稍後在下拉選單中辨識）：', title);
+  if (name === null) return;
+  const presetName = name.trim();
+  if (!presetName) return;
+
+  const recurrence = document.getElementById('f-recurrence').value;
+  const start_date = recurrence !== 'once' ? (document.getElementById('f-start-date').value || null) : null;
+  const end_date = recurrence !== 'once' ? (document.getElementById('f-end-date').value || null) : null;
+
+  const subtasks = [...document.querySelectorAll('#subtask-list .subtask-row')]
+    .map(row => row.querySelector('.sb-title').value.trim())
+    .filter(Boolean)
+    .map(t => ({ title: t }));
+
+  const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
+
+  try {
+    await callApi('save_preset', {
+      name: presetName,
+      title,
+      description: document.getElementById('f-description').value.trim() || null,
+      place: document.getElementById('f-place').value.trim() || null,
+      start_date, end_date, subtasks, group_ids,
+    });
+    alert('範本已儲存！');
+    const presetRes = await callApi('list_presets');
+    allPresets = presetRes.presets || [];
+    renderPresetSelect();
+  } catch (err) {
+    alert('儲存範本失敗：' + err.message);
+  }
+});
+
+initLiff();
+</script>
+
+</body>
+</html>
