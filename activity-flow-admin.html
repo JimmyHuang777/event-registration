@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>流程表管理 Flow Admin</title>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.7.7/lunar.js"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --canvas: #F3F4F6;
+    --error: #E0453C;
+    --error-bg: #FBEAE8;
+    --blue: #2563A8;
+    --blue-bg: #E9F1FA;
+    --amber: #92650A;
+    --amber-bg: #FFF3D6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+  #app { max-width: 520px; margin: 0 auto; min-height: 100vh; background: var(--paper); display: flex; flex-direction: column; }
+  .header { background: var(--line-green); color: white; padding: 24px 20px 20px; }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 13px; opacity: 0.92; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--canvas); }
+  .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--canvas); object-fit: cover; }
+  .profile-row .name { font-size: 13.5px; font-weight: 600; }
+
+  .content { padding: 16px 20px 32px; flex: 1; }
+
+  .btn-primary {
+    width: 100%; padding: 13px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:disabled { background: #C7CAD1; cursor: not-allowed; }
+  .btn-cancel {
+    width: 100%; padding: 12px; background: var(--canvas); color: var(--ink); border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .btn-add {
+    background: none; border: 1.5px dashed #D6D9DE; border-radius: 8px; padding: 9px;
+    width: 100%; color: var(--ink-soft); font-size: 13px; cursor: pointer; font-family: inherit; margin-bottom: 14px;
+  }
+  .btn-text { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 6px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+
+  .new-flow-btn { margin-bottom: 16px; }
+
+  .flow-card { border: 1.5px solid var(--canvas); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .flow-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .flow-title { font-size: 15px; font-weight: 700; }
+  .flow-meta { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .flow-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .flow-status.active { background: #E4F8EC; color: var(--line-green-dark); }
+  .flow-status.inactive { background: var(--error-bg); color: var(--error); }
+  .flow-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .flow-actions .btn-text { border: 1.5px solid var(--canvas); border-radius: 8px; }
+
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 30px 10px; }
+
+  /* ---------- Form ---------- */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="date"], .field input[type="time"], .field select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--canvas); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--paper);
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--line-green); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .preview-box {
+    background: var(--canvas); border-radius: 8px; padding: 10px 12px; font-size: 12.5px;
+    color: var(--ink-soft); line-height: 1.7; margin-top: -4px; margin-bottom: 14px;
+  }
+
+  .day-tabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 12px; }
+  .day-tab-btn {
+    flex-shrink: 0; padding: 8px 13px; border-radius: 20px; border: 1.5px solid var(--canvas);
+    background: var(--canvas); color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; white-space: nowrap;
+  }
+  .day-tab-btn.active { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+  .day-tab-btn .day-count { opacity: 0.7; }
+
+  .item-row { display: grid; grid-template-columns: 84px 84px 1fr 28px; gap: 6px; align-items: start; margin-bottom: 8px; }
+  .item-row input { padding: 8px 8px; border: 1.5px solid var(--canvas); border-radius: 6px; font-size: 12.5px; font-family: inherit; background: var(--paper); }
+  .item-row .remove-btn {
+    background: var(--error-bg); color: var(--error); border: none; border-radius: 6px;
+    width: 28px; height: 36px; cursor: pointer; font-size: 14px;
+  }
+  .item-row-labels { display: grid; grid-template-columns: 84px 84px 1fr 28px; gap: 6px; margin-bottom: 6px; }
+  .item-row-labels span { font-size: 10.5px; color: var(--ink-soft); font-weight: 600; }
+
+  .group-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .group-chip { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 20px; border: 1.5px solid var(--canvas); font-size: 12.5px; cursor: pointer; }
+  .group-chip.checked { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+  .group-chip input { width: 14px; height: 14px; }
+  .no-groups-note { font-size: 12.5px; color: var(--ink-soft); }
+
+  .form-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .form-actions .btn-primary, .form-actions .btn-cancel { flex: 1; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin-top: 4px; display: none; }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen, #form-screen { display: none; flex-direction: column; flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="no-access-screen" class="state-screen">
+    <div class="icon-circle" style="background:var(--ink-soft);">🔒</div>
+    <h2>沒有權限 No access</h2>
+    <p>您的 LINE 帳號目前沒有管理流程表的權限。<br>請聯繫管理員，在後台「流程表 Flow Sheets」的「流程管理員」中加入您的帳號。</p>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <h1>流程表管理 Flow Admin</h1>
+      <p>建立與編輯班程的開班資訊與課程流程</p>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="content">
+      <button type="button" class="btn-primary new-flow-btn" id="new-flow-btn">＋ 新增流程表 New Flow Sheet</button>
+      <div id="flow-list"></div>
+    </div>
+  </div>
+
+  <div id="form-screen">
+    <div class="header">
+      <h1 id="form-title">新增流程表 New Flow Sheet</h1>
+      <p>儲存後立即生效，成員可在流程表頁面看到</p>
+    </div>
+    <div class="content">
+      <div class="field">
+        <label>班程名稱 Name</label>
+        <input type="text" id="f-name" placeholder="例：辦事人員研習班">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>主班人 Host <span class="hint" style="margin:0;">選填</span></label>
+          <input type="text" id="f-host">
+        </div>
+        <div class="field">
+          <label>操持 Facilitator <span class="hint" style="margin:0;">選填</span></label>
+          <input type="text" id="f-facilitator">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>開始日期 Start date</label>
+          <input type="date" id="f-start-date">
+        </div>
+        <div class="field">
+          <label>結束日期 End date</label>
+          <input type="date" id="f-end-date">
+        </div>
+      </div>
+      <div class="preview-box" id="date-preview"></div>
+      <div class="field-row">
+        <div class="field">
+          <label>地點 Location <span class="hint" style="margin:0;">選填</span></label>
+          <input type="text" id="f-location">
+        </div>
+        <div class="field">
+          <label>地址 Address <span class="hint" style="margin:0;">選填</span></label>
+          <input type="text" id="f-address">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>課程流程 Schedule <span class="hint" style="margin:0;">依日期分頁新增，會自動依時間排序</span></label>
+        <div class="day-tabs" id="form-day-tabs"></div>
+        <div class="item-row-labels">
+          <span>開始</span><span>結束(選填)</span><span>項目內容</span><span></span>
+        </div>
+        <div id="item-list"></div>
+        <button type="button" class="btn-add" id="add-item-btn">＋ 新增項目 Add item</button>
+      </div>
+
+      <div class="field">
+        <label>適用群組 Groups <span class="hint" style="margin:0;">選填，不勾選則所有人都能看到</span></label>
+        <div class="group-chip-list" id="group-chip-list"></div>
+      </div>
+
+      <p class="modal-error" id="form-error"></p>
+
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" id="form-cancel-btn">取消</button>
+        <button type="button" class="btn-primary" id="form-submit-btn">儲存 Save</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+let LIFF_ID = null;
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/flow-admin-api';
+
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  noAccess: document.getElementById('no-access-screen'),
+  main: document.getElementById('main-screen'),
+  form: document.getElementById('form-screen'),
+};
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'main' || key === 'form') { el.style.display = key === name ? 'flex' : 'none'; }
+    else { el.classList.toggle('active', key === name); }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let allFlows = [];
+let allGroups = [];
+let editingId = null;
+let formItems = []; // { rowId, id, item_date, start_time, end_time, title }
+let itemRowCount = 0;
+let activeDayStr = null;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+/* ---------- Dual-calendar date formatting (lunar-javascript) ---------- */
+
+const CN_DIGITS = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const WEEKDAY_CN = ['日', '一', '二', '三', '四', '五', '六'];
+
+function formatRocYear(gregorianYear) {
+  const roc = gregorianYear - 1911;
+  return String(roc).split('').map(d => CN_DIGITS[parseInt(d, 10)]).join('');
+}
+function parseDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return { y, m, d };
+}
+function formatSolarLine(dateStr) {
+  if (!dateStr) return '';
+  const { y, m, d } = parseDateStr(dateStr);
+  const solar = Solar.fromYmd(y, m, d);
+  return `民國${formatRocYear(y)}年 ${m}月${d}日(國曆) 星期${WEEKDAY_CN[solar.getWeek()]}`;
+}
+function formatLunarLine(dateStr) {
+  if (!dateStr) return '';
+  const { y, m, d } = parseDateStr(dateStr);
+  const lunar = Solar.fromYmd(y, m, d).getLunar();
+  return `天運歲次${lunar.getYearInGanZhi()}年　${lunar.getMonthInChinese()}月　${lunar.getDayInChinese()}(農曆)`;
+}
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  const { y, m, d } = parseDateStr(dateStr);
+  const solar = Solar.fromYmd(y, m, d);
+  return `${m}/${d}(${WEEKDAY_CN[solar.getWeek()]})`;
+}
+function dateRange(startStr, endStr) {
+  const out = [];
+  if (!startStr || !endStr) return out;
+  const start = parseDateStr(startStr);
+  const end = parseDateStr(endStr);
+  const curDate = new Date(start.y, start.m - 1, start.d);
+  const endDate = new Date(end.y, end.m - 1, end.d);
+  while (curDate <= endDate) {
+    const y = curDate.getFullYear(), m = curDate.getMonth() + 1, d = curDate.getDate();
+    out.push(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    curDate.setDate(curDate.getDate() + 1);
+  }
+  return out;
+}
+
+function updateDatePreview() {
+  const start = document.getElementById('f-start-date').value;
+  const el = document.getElementById('date-preview');
+  if (!start) { el.textContent = '選擇開始日期後，將自動顯示農曆／國曆日期'; return; }
+  el.innerHTML = formatLunarLine(start) + '<br>' + formatSolarLine(start);
+}
+document.getElementById('f-start-date').addEventListener('change', () => { updateDatePreview(); renderDayTabs(); });
+document.getElementById('f-end-date').addEventListener('change', () => renderDayTabs());
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'activity_flow_admin').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台的「流程表 Flow Sheets」中建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    const who = await callApi('whoami');
+    if (!who.is_admin) {
+      showScreen('noAccess');
+      return;
+    }
+
+    await loadAll();
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+async function loadAll() {
+  const [flowRes, groupRes] = await Promise.all([
+    callApi('list_flows'),
+    callApi('list_groups'),
+  ]);
+  allFlows = flowRes.flows || [];
+  allGroups = groupRes.groups || [];
+  renderFlowList();
+}
+
+/* ---------- Flow list ---------- */
+
+function renderFlowList() {
+  const listEl = document.getElementById('flow-list');
+  if (allFlows.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">尚無流程表。</div>';
+    return;
+  }
+  listEl.innerHTML = allFlows.map(f => `
+    <div class="flow-card" data-id="${f.id}">
+      <div class="flow-card-top">
+        <div class="flow-title">${escapeHtml(f.name)}</div>
+        <span class="flow-status ${f.is_active ? 'active' : 'inactive'}">${f.is_active ? '啟用中' : '已停用'}</span>
+      </div>
+      <div class="flow-meta">${formatShortDate(f.start_date)} — ${formatShortDate(f.end_date)}${f.host ? '・主班人 ' + escapeHtml(f.host) : ''}・流程 ${f.items.length} 項</div>
+      <div class="flow-actions">
+        <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
+        <button type="button" class="btn-text" data-action="toggle">${f.is_active ? '停用' : '啟用'}</button>
+        <button type="button" class="btn-text danger" data-action="delete">刪除 Delete</button>
+      </div>
+    </div>`).join('');
+
+  listEl.querySelectorAll('.flow-card').forEach(card => {
+    const id = card.dataset.id;
+    card.querySelector('[data-action="edit"]').addEventListener('click', () => openForm(allFlows.find(f => f.id === id)));
+    card.querySelector('[data-action="toggle"]').addEventListener('click', async () => {
+      try {
+        await callApi('toggle_flow_active', { id });
+        await loadAll();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+      }
+    });
+    card.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+      const f = allFlows.find(x => x.id === id);
+      if (!confirm(`確定要刪除「${f ? f.name : ''}」嗎？此動作無法復原。`)) return;
+      try {
+        await callApi('delete_flow', { id });
+        await loadAll();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+      }
+    });
+  });
+}
+
+document.getElementById('new-flow-btn').addEventListener('click', () => openForm(null));
+
+/* ---------- Form: day tabs + item builder ---------- */
+
+function renderDayTabs() {
+  const start = document.getElementById('f-start-date').value;
+  const end = document.getElementById('f-end-date').value;
+  const days = dateRange(start, end);
+  const tabsEl = document.getElementById('form-day-tabs');
+
+  if (days.length === 0) {
+    tabsEl.innerHTML = '<span class="no-groups-note">請先選擇開始與結束日期</span>';
+    activeDayStr = null;
+    renderItemRows();
+    return;
+  }
+  if (!activeDayStr || !days.includes(activeDayStr)) activeDayStr = days[0];
+
+  tabsEl.innerHTML = days.map((d, idx) => {
+    const count = formItems.filter(it => it.item_date === d).length;
+    return `<button type="button" class="day-tab-btn ${d === activeDayStr ? 'active' : ''}" data-date="${d}">
+      第${idx + 1}天 ${formatShortDate(d)} <span class="day-count">${count ? '(' + count + ')' : ''}</span>
+    </button>`;
+  }).join('');
+  tabsEl.querySelectorAll('.day-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { activeDayStr = btn.dataset.date; renderDayTabs(); });
+  });
+
+  renderItemRows();
+}
+
+function renderItemRows() {
+  const listEl = document.getElementById('item-list');
+  listEl.innerHTML = '';
+  if (!activeDayStr) return;
+  formItems
+    .filter(it => it.item_date === activeDayStr)
+    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+    .forEach(it => appendItemRowEl(it));
+}
+
+function appendItemRowEl(item) {
+  const wrap = document.createElement('div');
+  wrap.className = 'item-row';
+  wrap.dataset.rowId = item.rowId;
+  wrap.innerHTML = `
+    <input type="time" class="it-start" value="${item.start_time || ''}">
+    <input type="time" class="it-end" value="${item.end_time || ''}">
+    <input type="text" class="it-title" placeholder="例：早課" value="${escapeHtml(item.title || '')}">
+    <button type="button" class="remove-btn">✕</button>
+  `;
+  document.getElementById('item-list').appendChild(wrap);
+
+  const sync = () => {
+    item.start_time = wrap.querySelector('.it-start').value;
+    item.end_time = wrap.querySelector('.it-end').value;
+    item.title = wrap.querySelector('.it-title').value;
+  };
+  wrap.querySelector('.it-start').addEventListener('change', sync);
+  wrap.querySelector('.it-end').addEventListener('change', sync);
+  wrap.querySelector('.it-title').addEventListener('input', sync);
+  wrap.querySelector('.remove-btn').addEventListener('click', () => {
+    formItems = formItems.filter(it => it.rowId !== item.rowId);
+    wrap.remove();
+    renderDayTabs();
+  });
+}
+
+document.getElementById('add-item-btn').addEventListener('click', () => {
+  if (!activeDayStr) { alert('請先選擇開始與結束日期。'); return; }
+  const item = { rowId: 'ir-' + (itemRowCount++), id: null, item_date: activeDayStr, start_time: '', end_time: '', title: '' };
+  formItems.push(item);
+  appendItemRowEl(item);
+  renderDayTabs();
+});
+
+function renderGroupChips(checkedGroupIds) {
+  const wrap = document.getElementById('group-chip-list');
+  if (allGroups.length === 0) {
+    wrap.innerHTML = '<span class="no-groups-note">尚未建立任何群組。</span>';
+    return;
+  }
+  wrap.innerHTML = allGroups.map(g => `
+    <label class="group-chip ${checkedGroupIds.has(g.id) ? 'checked' : ''}">
+      <input type="checkbox" value="${g.id}" ${checkedGroupIds.has(g.id) ? 'checked' : ''}>
+      ${escapeHtml(g.name)}
+    </label>
+  `).join('');
+  wrap.querySelectorAll('.group-chip input').forEach(cb => {
+    cb.addEventListener('change', () => cb.closest('.group-chip').classList.toggle('checked', cb.checked));
+  });
+}
+
+function openForm(flow) {
+  editingId = flow ? flow.id : null;
+  document.getElementById('form-title').textContent = flow ? '編輯流程表 Edit Flow Sheet' : '新增流程表 New Flow Sheet';
+  document.getElementById('form-error').style.display = 'none';
+
+  document.getElementById('f-name').value = flow ? flow.name : '';
+  document.getElementById('f-host').value = flow ? (flow.host || '') : '';
+  document.getElementById('f-facilitator').value = flow ? (flow.facilitator || '') : '';
+  document.getElementById('f-start-date').value = flow ? flow.start_date : '';
+  document.getElementById('f-end-date').value = flow ? flow.end_date : '';
+  document.getElementById('f-location').value = flow ? (flow.location || '') : '';
+  document.getElementById('f-address').value = flow ? (flow.address || '') : '';
+  updateDatePreview();
+
+  itemRowCount = 0;
+  formItems = (flow ? flow.items : []).map(it => ({
+    rowId: 'ir-' + (itemRowCount++),
+    id: it.id,
+    item_date: it.item_date,
+    start_time: (it.start_time || '').slice(0, 5),
+    end_time: (it.end_time || '').slice(0, 5),
+    title: it.title,
+  }));
+  activeDayStr = null;
+  renderDayTabs();
+
+  const checkedGroupIds = new Set(flow ? (flow.group_ids || []) : []);
+  renderGroupChips(checkedGroupIds);
+
+  showScreen('form');
+}
+
+document.getElementById('form-cancel-btn').addEventListener('click', () => showScreen('main'));
+
+document.getElementById('form-submit-btn').addEventListener('click', async () => {
+  const errorEl = document.getElementById('form-error');
+  errorEl.style.display = 'none';
+
+  const name = document.getElementById('f-name').value.trim();
+  const start_date = document.getElementById('f-start-date').value || null;
+  const end_date = document.getElementById('f-end-date').value || null;
+
+  if (!name) { errorEl.textContent = '請填寫班程名稱。'; errorEl.style.display = 'block'; return; }
+  if (!start_date || !end_date) { errorEl.textContent = '請選擇開始與結束日期。'; errorEl.style.display = 'block'; return; }
+  if (start_date > end_date) { errorEl.textContent = '開始日期不能晚於結束日期。'; errorEl.style.display = 'block'; return; }
+
+  const items = formItems
+    .filter(it => it.title && it.title.trim())
+    .map(it => ({ id: it.id, item_date: it.item_date, start_time: it.start_time, end_time: it.end_time || null, title: it.title.trim() }));
+
+  for (const it of items) {
+    if (!it.start_time) {
+      errorEl.textContent = `項目「${it.title}」缺少開始時間。`;
+      errorEl.style.display = 'block';
+      return;
+    }
+  }
+
+  const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
+
+  const payload = {
+    id: editingId,
+    name,
+    host: document.getElementById('f-host').value.trim() || null,
+    facilitator: document.getElementById('f-facilitator').value.trim() || null,
+    location: document.getElementById('f-location').value.trim() || null,
+    address: document.getElementById('f-address').value.trim() || null,
+    start_date, end_date,
+    items, group_ids,
+  };
+
+  const submitBtn = document.getElementById('form-submit-btn');
+  submitBtn.disabled = true;
+  try {
+    await callApi('save_flow', payload);
+    await loadAll();
+    showScreen('main');
+  } catch (err) {
+    errorEl.textContent = '儲存失敗：' + err.message;
+    errorEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+initLiff();
+</script>
+
+</body>
+</html>

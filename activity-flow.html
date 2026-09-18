@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>行功了愿表 Activity Flow</title>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.7.7/lunar.js"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --field-bg: #F3F4F6;
+    --error: #E0453C;
+    --blue: #2563A8;
+    --blue-bg: #E9F1FA;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--paper); display: flex; flex-direction: column; }
+  .header { background: var(--line-green); color: white; padding: 24px 20px 20px; }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 13px; opacity: 0.92; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--field-bg); }
+  .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--field-bg); object-fit: cover; }
+  .profile-row .name { font-size: 13.5px; font-weight: 600; }
+
+  .content { padding: 16px 20px 32px; flex: 1; }
+
+  .flow-card {
+    border: 1.5px solid var(--field-bg); border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer;
+  }
+  .flow-card:active { background: var(--field-bg); }
+  .flow-card .flow-name { font-size: 15.5px; font-weight: 700; margin-bottom: 4px; }
+  .flow-card .flow-meta { font-size: 12.5px; color: var(--ink-soft); line-height: 1.6; }
+
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 40px 20px; }
+
+  .back-row { padding: 14px 20px 0; }
+  .back-btn {
+    background: none; border: none; color: var(--blue); font-size: 13.5px; font-weight: 600;
+    cursor: pointer; font-family: inherit; padding: 4px 0;
+  }
+
+  .info-card {
+    background: var(--field-bg); border-radius: 12px; padding: 16px; margin: 12px 20px 16px;
+  }
+  .info-card .flow-name { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+  .info-row { display: flex; font-size: 13px; padding: 4px 0; line-height: 1.6; }
+  .info-row .info-label { width: 72px; flex-shrink: 0; color: var(--ink-soft); }
+  .info-row .info-value { flex: 1; }
+
+  .day-tabs { display: flex; gap: 6px; padding: 0 20px 12px; overflow-x: auto; }
+  .day-tab-btn {
+    flex-shrink: 0; padding: 8px 14px; border-radius: 20px; border: 1.5px solid var(--field-bg);
+    background: var(--field-bg); color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; white-space: nowrap;
+  }
+  .day-tab-btn.active { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .item-list { padding: 0 20px 24px; }
+  .item-row { display: flex; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--field-bg); }
+  .item-row:last-child { border-bottom: none; }
+  .item-time { width: 84px; flex-shrink: 0; font-size: 12.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .item-title { flex: 1; font-size: 14px; line-height: 1.5; }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--field-bg);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 300px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #list-screen, #detail-screen { display: none; flex-direction: column; flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="list-screen">
+    <div class="header">
+      <h1>行功了愿表</h1>
+      <p>查看班程的開班資訊與課程流程</p>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="content">
+      <div id="flow-list"></div>
+    </div>
+  </div>
+
+  <div id="detail-screen">
+    <div class="header">
+      <h1 id="detail-title">班程</h1>
+      <p>開班資訊與課程流程</p>
+    </div>
+    <div class="back-row">
+      <button type="button" class="back-btn" id="back-to-list-btn">‹ 返回列表 Back to list</button>
+    </div>
+    <div class="info-card" id="detail-info-card"></div>
+    <div class="day-tabs" id="detail-day-tabs"></div>
+    <div class="item-list" id="detail-item-list"></div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+let LIFF_ID = null;
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/flow-api';
+
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  list: document.getElementById('list-screen'),
+  detail: document.getElementById('detail-screen'),
+};
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'list' || key === 'detail') { el.style.display = key === name ? 'flex' : 'none'; }
+    else { el.classList.toggle('active', key === name); }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let allFlows = [];
+let currentFlow = null;
+let currentItems = [];
+let currentDayIndex = 0;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+/* ---------- Dual-calendar date formatting (lunar-javascript) ---------- */
+
+const CN_DIGITS = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const WEEKDAY_CN = ['日', '一', '二', '三', '四', '五', '六'];
+
+function formatRocYear(gregorianYear) {
+  const roc = gregorianYear - 1911;
+  return String(roc).split('').map(d => CN_DIGITS[parseInt(d, 10)]).join('');
+}
+function parseDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return { y, m, d };
+}
+function formatSolarLine(dateStr) {
+  if (!dateStr) return '';
+  const { y, m, d } = parseDateStr(dateStr);
+  const solar = Solar.fromYmd(y, m, d);
+  return `民國${formatRocYear(y)}年 ${m}月${d}日(國曆) 星期${WEEKDAY_CN[solar.getWeek()]}`;
+}
+function formatLunarLine(dateStr) {
+  if (!dateStr) return '';
+  const { y, m, d } = parseDateStr(dateStr);
+  const lunar = Solar.fromYmd(y, m, d).getLunar();
+  return `天運歲次${lunar.getYearInGanZhi()}年　${lunar.getMonthInChinese()}月　${lunar.getDayInChinese()}(農曆)`;
+}
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  const { m, d } = parseDateStr(dateStr);
+  const solar = Solar.fromYmd(parseDateStr(dateStr).y, m, d);
+  return `${m}/${d}(${WEEKDAY_CN[solar.getWeek()]})`;
+}
+function dateRange(startStr, endStr) {
+  const out = [];
+  let cur = parseDateStr(startStr);
+  const end = parseDateStr(endStr);
+  const curDate = new Date(cur.y, cur.m - 1, cur.d);
+  const endDate = new Date(end.y, end.m - 1, end.d);
+  while (curDate <= endDate) {
+    const y = curDate.getFullYear(), m = curDate.getMonth() + 1, d = curDate.getDate();
+    out.push(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    curDate.setDate(curDate.getDate() + 1);
+  }
+  return out;
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'activity_flow').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台的「流程表 Flow Sheets」中建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    await loadFlowList();
+    showScreen('list');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+/* ---------- Flow list ---------- */
+
+async function loadFlowList() {
+  const res = await callApi('list_flows');
+  allFlows = res.flows || [];
+  renderFlowList();
+}
+
+function renderFlowList() {
+  const listEl = document.getElementById('flow-list');
+  if (allFlows.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前沒有可查看的流程表。</div>';
+    return;
+  }
+  listEl.innerHTML = allFlows.map(f => `
+    <div class="flow-card" data-id="${f.id}">
+      <div class="flow-name">${escapeHtml(f.name)}</div>
+      <div class="flow-meta">
+        ${f.host ? '主班人 ' + escapeHtml(f.host) + '　' : ''}${formatShortDate(f.start_date)} — ${formatShortDate(f.end_date)}
+        ${f.location ? '<br>📍 ' + escapeHtml(f.location) : ''}
+      </div>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.flow-card').forEach(card => {
+    card.addEventListener('click', () => openFlowDetail(card.dataset.id));
+  });
+}
+
+document.getElementById('back-to-list-btn').addEventListener('click', () => showScreen('list'));
+
+/* ---------- Flow detail ---------- */
+
+async function openFlowDetail(id) {
+  setLoadingText('載入中…');
+  showScreen('loading');
+  try {
+    const res = await callApi('get_flow', { id });
+    currentFlow = res.flow;
+    currentItems = res.items || [];
+    currentDayIndex = 0;
+    renderFlowDetail();
+    showScreen('detail');
+  } catch (err) {
+    alert('載入失敗：' + err.message);
+    showScreen('list');
+  }
+}
+
+function renderFlowDetail() {
+  const f = currentFlow;
+  document.getElementById('detail-title').textContent = f.name;
+
+  document.getElementById('detail-info-card').innerHTML = `
+    <div class="flow-name">${escapeHtml(f.name)}</div>
+    ${infoRow('主班人', f.host)}
+    ${infoRow('操持', f.facilitator)}
+    ${infoRow('農曆', formatLunarLine(f.start_date))}
+    ${infoRow('國曆', formatSolarLine(f.start_date))}
+    ${infoRow('地點', f.location)}
+    ${infoRow('地址', f.address)}
+  `;
+
+  const days = dateRange(f.start_date, f.end_date);
+  const tabsEl = document.getElementById('detail-day-tabs');
+  tabsEl.innerHTML = days.map((d, idx) => `
+    <button type="button" class="day-tab-btn ${idx === currentDayIndex ? 'active' : ''}" data-idx="${idx}">
+      第${idx + 1}天 ${formatShortDate(d)}
+    </button>
+  `).join('');
+  tabsEl.querySelectorAll('.day-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentDayIndex = parseInt(btn.dataset.idx, 10);
+      renderFlowDetail();
+    });
+  });
+
+  const dayStr = days[currentDayIndex];
+  const dayItems = currentItems.filter(it => it.item_date === dayStr);
+  const listEl = document.getElementById('detail-item-list');
+  if (dayItems.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">這一天尚未安排流程項目。</div>';
+    return;
+  }
+  listEl.innerHTML = dayItems.map(it => `
+    <div class="item-row">
+      <div class="item-time">${it.start_time.slice(0, 5)}${it.end_time ? '~' + it.end_time.slice(0, 5) : ''}</div>
+      <div class="item-title">${escapeHtml(it.title)}</div>
+    </div>
+  `).join('');
+}
+
+function infoRow(label, value) {
+  if (!value) return '';
+  return `<div class="info-row"><div class="info-label">${escapeHtml(label)}</div><div class="info-value">${escapeHtml(value)}</div></div>`;
+}
+
+initLiff();
+</script>
+
+</body>
+</html>
