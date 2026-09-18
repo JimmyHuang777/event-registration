@@ -6,6 +6,7 @@ on:
     paths:
       - 'supabase/functions/registrant-api/**'
       - 'supabase/functions/tasks-api/**'
+      - 'supabase/functions/tasks-admin-api/**'
       - 'supabase/functions/create-liff-app/**'
 
 jobs:
@@ -30,6 +31,11 @@ jobs:
 
       - name: Deploy tasks-api Edge Function
         run: supabase functions deploy tasks-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy tasks-admin-api Edge Function
+        run: supabase functions deploy tasks-admin-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
