@@ -238,10 +238,39 @@ serve(async (req) => {
       // ---- Delete the submitter's profile entirely ----
       // Cascades to delete ALL attendees they ever registered too (see
       // schema: registrations.user_id references users(id) on delete cascade).
+      // NOTE: this also cascades through every OTHER table that
+      // references users(id) — task assignments, job/flow/event admin
+      // membership, group membership, etc. — since `users` is shared
+      // across the whole system, not just event registrations. Kept
+      // here in case a true "delete everything" flow is ever needed,
+      // but the per-event registration page (index.html) deliberately
+      // does NOT call this — see delete_my_event_registrations below.
       case "delete_profile": {
         if (!existingUser) return json({ error: "No profile found." }, 404);
 
         const { error } = await supabase.from("users").delete().eq("id", existingUser.id);
+        if (error) return json({ error: error.message }, 400);
+        return json({ success: true });
+      }
+
+      // ---- Delete the submitter's own registration data for ONE
+      // event only (hard delete of their `registrations` rows for
+      // that event_id). This is what the registration page's
+      // "刪除我的資料" button actually calls — it does NOT touch their
+      // `users` row or any data tied to other events, tasks, or flows,
+      // since a button on a single event's page deleting a person's
+      // entire account system-wide would be a dangerous surprise.
+      case "delete_my_event_registrations": {
+        if (!existingUser) return json({ error: "No profile found." }, 404);
+        const { event_id } = body;
+        if (!event_id) return json({ error: "Missing event_id." }, 400);
+
+        const { error } = await supabase
+          .from("registrations")
+          .delete()
+          .eq("user_id", existingUser.id)
+          .eq("event_id", event_id);
+
         if (error) return json({ error: error.message }, 400);
         return json({ success: true });
       }

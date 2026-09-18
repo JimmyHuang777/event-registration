@@ -288,13 +288,13 @@
       </div>
 
       <div class="privacy-note">
-        您所提交的資料僅用於本次活動的報名與報到聯繫，僅主辦單位與工作人員可查閱。您可隨時編輯或取消已登記人員的報名，或使用下方按鈕刪除您在本系統中的所有資料。
+        您所提交的資料僅用於本次活動的報名與報到聯繫，僅主辦單位與工作人員可查閱。您可隨時編輯或取消已登記人員的報名，或使用下方按鈕刪除您在「本活動」的報名資料。
       </div>
 
       <button type="submit" class="submit-btn" id="submit-btn">送出報名 Submit</button>
 
       <div class="secondary-actions" id="secondary-actions" style="display:none;">
-        <button type="button" class="link-btn delete" id="delete-btn">刪除我的所有資料</button>
+        <button type="button" class="link-btn delete" id="delete-btn">刪除我在本活動的報名資料</button>
       </div>
     </form>
   </div>
@@ -860,11 +860,11 @@ document.getElementById('reg-form').addEventListener('submit', async (e) => {
 });
 
 document.getElementById('delete-btn').addEventListener('click', async () => {
-  if (!confirm('這會刪除您在本系統中的所有資料（包含您幫所有人登記的所有報名紀錄），且無法復原。確定要繼續嗎？')) return;
+  if (!confirm('這會刪除您在「本活動」的所有報名資料（包含您幫所有人登記的報名紀錄），且無法復原。不會影響您在其他活動或系統其他功能中的資料。確定要繼續嗎？')) return;
   try {
-    await callApi('delete_profile', {});
+    await callApi('delete_my_event_registrations', { event_id: currentEventId });
     document.getElementById('success-title').textContent = '資料已刪除';
-    document.getElementById('success-message').textContent = '您的所有個人資料已從系統中移除。';
+    document.getElementById('success-message').textContent = '您在本活動的報名資料已移除。';
     showScreen('success');
   } catch (err) {
     alert('刪除失敗，請稍後再試。\n' + err.message);
