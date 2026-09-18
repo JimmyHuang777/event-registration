@@ -519,9 +519,11 @@ function renderItemRows() {
   const listEl = document.getElementById('item-list');
   listEl.innerHTML = '';
   if (!activeDayStr) return;
+  // No auto-sort by time here — items render in the order they were
+  // added (or loaded), so a newly-added blank row appears at the
+  // bottom instead of jumping to the top while its time is empty.
   formItems
     .filter(it => it.item_date === activeDayStr)
-    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
     .forEach(it => appendItemRowEl(it));
 }
 
@@ -530,8 +532,8 @@ function appendItemRowEl(item) {
   wrap.className = 'item-row';
   wrap.dataset.rowId = item.rowId;
   wrap.innerHTML = `
-    <input type="time" class="it-start" value="${item.start_time || ''}">
-    <input type="time" class="it-end" value="${item.end_time || ''}">
+    <input type="text" class="it-start" placeholder="14:00" value="${escapeHtml(item.start_time || '')}">
+    <input type="text" class="it-end" placeholder="14:50" value="${escapeHtml(item.end_time || '')}">
     <input type="text" class="it-title" placeholder="例：早課" value="${escapeHtml(item.title || '')}">
     <button type="button" class="remove-btn">✕</button>
   `;

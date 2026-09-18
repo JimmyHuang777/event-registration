@@ -166,7 +166,6 @@ serve(async (req) => {
           .select("id, item_date, start_time, end_time, title, sort_order")
           .eq("flow_id", id)
           .order("item_date", { ascending: true })
-          .order("start_time", { ascending: true })
           .order("sort_order", { ascending: true });
         if (itemsErr) return json({ error: itemsErr.message }, 400);
 

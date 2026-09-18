@@ -146,7 +146,7 @@ serve(async (req) => {
             .select("id, flow_id, item_date, start_time, end_time, title, sort_order")
             .in("flow_id", flowIds)
             .order("item_date", { ascending: true })
-            .order("start_time", { ascending: true });
+            .order("sort_order", { ascending: true });
           if (itemsErr) return json({ error: itemsErr.message }, 400);
           items = itemRows || [];
 
