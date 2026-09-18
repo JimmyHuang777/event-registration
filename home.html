@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>入口 Home</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB; --error: #E0483E;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; }
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 22px 20px 16px; background: var(--paper); border-bottom: 1px solid var(--line); }
+  .header h1 { font-size: 19px; margin: 0 0 4px; }
+  .header p { font-size: 13px; color: var(--ink-soft); margin: 0; }
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+    text-decoration: none; color: inherit;
+  }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; color: white;
+  }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .section-label { font-size: 12px; color: var(--ink-soft); font-weight: 700; margin: 14px 4px 2px; letter-spacing: 0.02em; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <h1>功能入口 Home</h1>
+      <p>點選以下項目前往對應功能</p>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="menu-list" id="menu-list"></div>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/home-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen').forEach(el => el.classList.remove('active'));
+  document.getElementById('main-screen').style.display = 'none';
+  if (name === 'main') {
+    document.getElementById('main-screen').style.display = 'flex';
+  } else {
+    document.getElementById(name + '-screen').classList.add('active');
+  }
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms)),
+  ]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+// ---- Menu entries: which flag from get_menu controls each one,
+// which liff_apps `purpose` supplies its link, and how it's shown. ----
+const MENU_ENTRIES = [
+  {
+    flag: 'show_tasks', purpose: 'tasks',
+    title: '行功了愿表 Task Roster', desc: '認領、查看今日與所有組內的行功了愿',
+    color: '#2E90FA', icon: '📋', section: 'member',
+  },
+  {
+    flag: 'show_flows', purpose: 'activity_flow',
+    title: '開班資訊表 Activity Flow', desc: '查看班程的開班資訊與課程流程',
+    color: '#6B5FB4', icon: '📅', section: 'member',
+  },
+  {
+    flag: 'is_job_admin', purpose: 'tasks_admin',
+    title: '行功了愿管理 Job Admin', desc: '建立與編輯行功了愿範本',
+    color: '#F79009', icon: '🛠️', section: 'admin',
+  },
+  {
+    flag: 'is_flow_admin', purpose: 'activity_flow_admin',
+    title: '流程表管理 Flow Admin', desc: '建立與編輯開班資訊表',
+    color: '#F79009', icon: '🛠️', section: 'admin',
+  },
+];
+
+async function renderMenu(menuData) {
+  const listEl = document.getElementById('menu-list');
+  listEl.innerHTML = '';
+
+  const wanted = MENU_ENTRIES.filter(e => menuData[e.flag]);
+  if (wanted.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">目前沒有可以使用的功能。<br>若您認為這是誤判，請聯繫管理員將您加入相關群組。</div>';
+    return;
+  }
+
+  const purposes = wanted.map(e => e.purpose);
+  const { data: liffRows } = await supabasePublic.from('liff_apps').select('purpose, liff_id').in('purpose', purposes);
+  const liffByPurpose = {};
+  (liffRows || []).forEach(r => { liffByPurpose[r.purpose] = r.liff_id; });
+
+  let lastSection = null;
+  wanted.forEach(entry => {
+    if (entry.section !== lastSection) {
+      const label = document.createElement('div');
+      label.className = 'section-label';
+      label.textContent = entry.section === 'admin' ? '管理功能 Admin' : '一般功能';
+      listEl.appendChild(label);
+      lastSection = entry.section;
+    }
+
+    const liffId = liffByPurpose[entry.purpose];
+    const card = document.createElement(liffId ? 'a' : 'div');
+    card.className = 'menu-card';
+    if (liffId) card.href = 'https://liff.line.me/' + liffId;
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${entry.color};">${entry.icon}</div>
+      <div class="menu-body">
+        <div class="title">${entry.title}</div>
+        <div class="desc">${liffId ? entry.desc : '此功能尚未設定 LINE 連結，請聯繫管理員'}</div>
+      </div>
+      <div class="menu-arrow">${liffId ? '›' : ''}</div>
+    `;
+    listEl.appendChild(card);
+  });
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    setLoadingText('載入功能中…');
+    const menuData = await callApi('get_menu');
+    await renderMenu(menuData);
+
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+initLiff();
+</script>
+</body>
+</html>
