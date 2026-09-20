@@ -210,6 +210,7 @@ serve(async (req) => {
           .from("events")
           .select("id, name, event_date, location")
           .eq("is_active", true)
+          .eq("offers_transport", true)
           .order("event_date", { ascending: true });
         const eventIds = (eventRows || []).map((e: any) => e.id);
 

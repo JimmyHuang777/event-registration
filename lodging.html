@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>住宿 Lodging</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --line-green-dark: #05A648;
+    --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB;
+    --error: #E0483E; --error-bg: #FBEAE8;
+    --blue: #2563A8; --blue-bg: #E9F1FA;
+    --amber: #92650A; --amber-bg: #FFF3D6;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; background: var(--paper); }
+
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+    font-family: inherit;
+  }
+  .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+
+  .board-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 18px 20px 14px; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .header .back-btn { background: none; border: none; font-size: 20px; color: var(--ink-soft); cursor: pointer; padding: 4px 6px 4px 0; font-family: inherit; }
+  .header .titles h1 { font-size: 17px; margin: 0; }
+  .header .titles p { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .content { padding: 4px 20px 32px; flex: 1; overflow-y: auto; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+    text-decoration: none; color: inherit; cursor: pointer; width: 100%; text-align: left; font-family: inherit;
+  }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; color: white;
+  }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13px; padding: 20px 10px; }
+
+  .section-title { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
+  .section-title:first-child { margin-top: 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"], .field input[type="time"], .field textarea {
+    width: 100%; padding: 11px 12px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 14.5px; font-family: inherit; background: var(--paper);
+  }
+  .field textarea { min-height: 60px; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--line-green); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin: 6px 0 0; display: none; }
+
+  .car-profile-card { background: var(--canvas); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.7; }
+  .car-profile-card .edit-link { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0; margin-top: 6px; font-family: inherit; }
+
+  .trip-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .trip-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .trip-card-name { font-size: 15px; font-weight: 700; }
+  .trip-card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
+  .seats-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; background: var(--blue-bg); color: var(--blue); }
+  .seats-badge.full { background: var(--error-bg); color: var(--error); }
+  .trip-status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; display: inline-block; margin-top: 8px; }
+  .trip-status-badge.available { background: var(--canvas); color: var(--ink-soft); }
+  .trip-status-badge.occupied { background: #E4F8EC; color: var(--line-green-dark); }
+
+  .passenger-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 8px; }
+  .additional-passenger-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .additional-passenger-row input { flex: 1; }
+  .additional-passenger-row .remove-passenger-btn { background: none; border: none; color: var(--error); font-size: 18px; cursor: pointer; padding: 4px 8px; font-family: inherit; }
+  .trip-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .btn-text { background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 10px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+  .btn-text.primary { background: var(--line-green); color: white; border-color: var(--line-green); }
+
+  .ride-status-card { border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; background: var(--amber-bg); }
+  .ride-status-card.assigned { background: #E4F8EC; }
+  .ride-status-card .title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .ride-status-card .details { font-size: 12.5px; color: var(--ink-soft); line-height: 1.6; }
+
+  .request-select { font-size: 12.5px; padding: 6px 8px; border-radius: 8px; border: 1.5px solid var(--line); font-family: inherit; max-width: 140px; }
+
+  .add-btn { width: 100%; padding: 12px; background: none; border: 1.5px dashed var(--line); border-radius: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
+  .add-btn:hover { border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .form-actions { display: flex; gap: 10px; margin-top: 6px; margin-bottom: 20px; }
+  .form-actions .submit-btn { flex: 1; margin: 0; }
+  .form-actions .btn-cancel { flex-shrink: 0; padding: 12px 16px; background: var(--canvas); border: none; border-radius: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="role-screen" class="board-screen">
+    <div class="header">
+      <div class="titles">
+        <h1>🏠 住宿 Lodging</h1>
+        <p>請選擇您要使用的身份</p>
+      </div>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="menu-list" id="role-list"></div>
+  </div>
+
+  <div id="host-profile-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="host-profile-back-btn">‹</button>
+      <div class="titles">
+        <h1>🏠 房東資料 Host info</h1>
+        <p id="host-profile-subtitle">請先登記您的聯絡方式與房源資訊</p>
+      </div>
+    </div>
+    <div class="content" id="host-profile-content"></div>
+  </div>
+
+  <div id="event-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="event-back-btn">‹</button>
+      <div class="titles">
+        <h1 id="event-screen-title">請選擇活動</h1>
+        <p>選擇要辦理住宿的活動</p>
+      </div>
+    </div>
+    <div class="menu-list" id="event-list"></div>
+  </div>
+
+  <div id="host-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="host-back-btn">‹</button>
+      <div class="titles">
+        <h1>🏠 我是房東 Host</h1>
+        <p id="host-event-name"></p>
+      </div>
+    </div>
+    <div class="content" id="host-content"></div>
+  </div>
+
+  <div id="guest-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="guest-back-btn">‹</button>
+      <div class="titles">
+        <h1>🙋 我是房客 Guest</h1>
+        <p id="guest-event-name"></p>
+      </div>
+    </div>
+    <div class="content" id="guest-content"></div>
+  </div>
+
+  <div id="manager-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="manager-back-btn">‹</button>
+      <div class="titles">
+        <h1>🗂️ 住宿管理員 Lodging Manager</h1>
+        <p id="manager-event-name"></p>
+      </div>
+    </div>
+    <div class="content" id="manager-content"></div>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/lodging-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+let whoami = null;
+let currentEvent = null;
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen, .board-screen').forEach(el => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
+  const el = document.getElementById(name + '-screen');
+  if (el.classList.contains('state-screen')) {
+    el.classList.add('active');
+    el.style.display = 'flex';
+  } else {
+    el.style.display = 'flex';
+  }
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms)),
+  ]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+const STATUS_LABELS = {
+  available: '可入住',
+  occupied: '已入住',
+};
+// Host advances the offer one step, once: available -> occupied, when
+// a guest has actually checked in. Going back to available happens
+// either automatically (every assigned guest confirms check-out) or
+// via the Lodging Manager's manual override.
+const STATUS_NEXT = {
+  available: { next: 'occupied', label: '住客已入住 Guest checked in' },
+};
+
+/* ---------- Role picker ---------- */
+
+function renderRoleList() {
+  const listEl = document.getElementById('role-list');
+  listEl.innerHTML = '';
+
+  const roles = [
+    { key: 'host', title: '🏠 我是房東 I am a host', desc: '登記房源資訊，提供住宿名額', color: '#B4530F' },
+    { key: 'guest', title: '🙋 我是房客 I am a guest', desc: '申請住宿名額', color: '#6B5FB4' },
+  ];
+  if (whoami.is_lodging_manager) {
+    roles.push({ key: 'manager', title: '🗂️ 我是住宿管理員 I am a Lodging Manager', desc: '配對房東與房客的住宿需求', color: '#F79009' });
+  }
+
+  roles.forEach(r => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'menu-card';
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${r.color};">${r.title.split(' ')[0]}</div>
+      <div class="menu-body">
+        <div class="title">${r.title.slice(r.title.indexOf(' ') + 1)}</div>
+        <div class="desc">${r.desc}</div>
+      </div>
+      <div class="menu-arrow">›</div>
+    `;
+    card.addEventListener('click', () => {
+      if (r.key === 'host' && !whoami.host_profile) {
+        openHostProfileScreen('setup');
+      } else {
+        openEventPicker(r.key);
+      }
+    });
+    listEl.appendChild(card);
+  });
+}
+
+/* ---------- Host profile (contact info + property info, set once,
+   required before a host can see any event) ---------- */
+
+let hostProfileMode = 'setup'; // 'setup' | 'edit'
+
+function openHostProfileScreen(mode) {
+  hostProfileMode = mode;
+  document.getElementById('host-profile-subtitle').textContent =
+    mode === 'setup' ? '請先登記您的聯絡方式與房源資訊，才能查看可提供住宿的活動' : '更新您的聯絡方式與房源資訊';
+  renderHostProfileForm();
+  showScreen('host-profile');
+}
+
+function renderHostProfileForm() {
+  const p = whoami.host_profile;
+  const el = document.getElementById('host-profile-content');
+  el.innerHTML = `
+    <div class="field">
+      <label>房東姓名 Your name</label>
+      <input type="text" id="hp-name" value="${p ? escapeHtml(p.contact_name || '') : escapeHtml(lineProfile.displayName || '')}">
+    </div>
+    <div class="field">
+      <label>聯絡電話 Phone</label>
+      <input type="text" id="hp-phone" placeholder="例：0912-345-678" value="${p ? escapeHtml(p.contact_phone || '') : ''}">
+    </div>
+    <div class="field">
+      <label>房源名稱 Property name</label>
+      <input type="text" id="hp-property-name" placeholder="例：王公館" value="${p ? escapeHtml(p.property_name || '') : ''}">
+    </div>
+    <div class="field">
+      <label>房源類型 Property type <span class="hint">選填</span></label>
+      <input type="text" id="hp-property-type" placeholder="例：獨立套房 / 通舖" value="${p ? escapeHtml(p.property_type || '') : ''}">
+    </div>
+    <div class="field">
+      <label>房源地址 Property address</label>
+      <input type="text" id="hp-property-address" placeholder="例：台北市中正區忠孝東路一段1號" value="${p ? escapeHtml(p.property_address || '') : ''}">
+    </div>
+    <p class="modal-error" id="hp-error"></p>
+    <button type="button" class="submit-btn" id="hp-save-btn" style="width:100%;">儲存 Save</button>
+  `;
+  document.getElementById('hp-save-btn').addEventListener('click', saveHostProfileScreen);
+}
+
+async function saveHostProfileScreen() {
+  const errEl = document.getElementById('hp-error');
+  errEl.style.display = 'none';
+  const name = document.getElementById('hp-name').value.trim();
+  const phone = document.getElementById('hp-phone').value.trim();
+  const propertyName = document.getElementById('hp-property-name').value.trim();
+  const propertyType = document.getElementById('hp-property-type').value.trim();
+  const propertyAddress = document.getElementById('hp-property-address').value.trim();
+
+  if (!name || !phone) { errEl.textContent = '請填寫房東姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+  if (!propertyName || !propertyAddress) { errEl.textContent = '請填寫房源名稱與地址。'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('hp-save-btn');
+  btn.disabled = true;
+  try {
+    const { host_profile } = await callApi('save_host_profile', {
+      contact_name: name, contact_phone: phone,
+      property_name: propertyName, property_type: propertyType, property_address: propertyAddress,
+    });
+    whoami.host_profile = host_profile;
+    hostProfile = host_profile;
+    if (hostProfileMode === 'setup') {
+      openEventPicker('host');
+    } else {
+      showScreen('host');
+      renderHostBoard();
+    }
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('host-profile-back-btn').addEventListener('click', () => {
+  showScreen(hostProfileMode === 'setup' ? 'role' : 'host');
+});
+
+/* ---------- Event picker ---------- */
+
+let pendingRole = null;
+
+async function openEventPicker(role) {
+  pendingRole = role;
+  const titleText = { host: '請選擇活動（房東）', guest: '請選擇活動（房客）', manager: '請選擇活動（管理員）' }[role];
+  document.getElementById('event-screen-title').textContent = titleText;
+  showScreen('event');
+
+  const listEl = document.getElementById('event-list');
+  listEl.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { events } = await callApi('list_active_events');
+    if (!events || events.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">目前沒有進行中的活動。</div>';
+      return;
+    }
+    listEl.innerHTML = '';
+    events.forEach(ev => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'menu-card';
+      const meta = [ev.event_date, ev.location].filter(Boolean).join(' · ');
+      card.innerHTML = `
+        <div class="menu-icon" style="background:#06C755;">🎫</div>
+        <div class="menu-body">
+          <div class="title">${escapeHtml(ev.name)}</div>
+          <div class="desc">${escapeHtml(meta || '')}</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      `;
+      card.addEventListener('click', () => enterBoard(role, ev));
+      listEl.appendChild(card);
+    });
+  } catch (err) {
+    listEl.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+document.getElementById('event-back-btn').addEventListener('click', () => showScreen('role'));
+document.getElementById('host-back-btn').addEventListener('click', () => showScreen('event'));
+document.getElementById('guest-back-btn').addEventListener('click', () => showScreen('event'));
+document.getElementById('manager-back-btn').addEventListener('click', () => showScreen('event'));
+
+function enterBoard(role, ev) {
+  currentEvent = ev;
+  if (role === 'host') {
+    document.getElementById('host-event-name').textContent = ev.name;
+    showScreen('host');
+    loadHostBoard();
+  } else if (role === 'guest') {
+    document.getElementById('guest-event-name').textContent = ev.name;
+    showScreen('guest');
+    loadGuestBoard();
+  } else {
+    document.getElementById('manager-event-name').textContent = ev.name;
+    showScreen('manager');
+    loadManagerBoard();
+  }
+}
+
+/* ================= HOST ================= */
+
+let hostProfile = null;
+let myOffers = [];
+
+async function loadHostBoard() {
+  const el = document.getElementById('host-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    hostProfile = whoami.host_profile;
+    const { offers } = await callApi('list_my_offers', { event_id: currentEvent.id });
+    myOffers = offers || [];
+    renderHostBoard();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderHostBoard() {
+  const el = document.getElementById('host-content');
+
+  const profileHTML = `<div class="car-profile-card">
+      👤 ${escapeHtml(hostProfile.contact_name)}　${escapeHtml(hostProfile.contact_phone)}<br>
+      🏠 ${escapeHtml(hostProfile.property_name)}${hostProfile.property_type ? '・' + escapeHtml(hostProfile.property_type) : ''}<br>
+      📍 ${escapeHtml(hostProfile.property_address)}
+      <div><button type="button" class="edit-link" id="edit-host-profile-btn">編輯房東資料 Edit</button></div>
+    </div>`;
+
+  const offersHTML = `
+    <div class="section-title">我提供的住宿 My offers for this event</div>
+    <div id="my-offers-list"></div>
+    <button type="button" class="add-btn" id="add-offer-btn">＋ 新增可提供住宿時段 Add availability</button>
+    <div id="offer-form" style="display:none;">
+      <div class="field">
+        <label>日期 Date</label>
+        <input type="date" id="offer-date">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>入住時間 Check-in time</label>
+          <input type="time" id="offer-checkin" step="300">
+        </div>
+        <div class="field">
+          <label>退房時間 Check-out time</label>
+          <input type="time" id="offer-checkout" step="300">
+        </div>
+      </div>
+      <div class="field">
+        <label>可住人數 Capacity</label>
+        <input type="number" id="offer-capacity" min="1" value="2">
+      </div>
+      <div class="field">
+        <label>備註 Notes <span class="hint">選填</span></label>
+        <textarea id="offer-notes"></textarea>
+      </div>
+      <p class="modal-error" id="offer-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" id="offer-cancel-btn">取消</button>
+        <button type="button" class="submit-btn" id="offer-save-btn">送出 Submit</button>
+      </div>
+    </div>`;
+
+  el.innerHTML = profileHTML + offersHTML;
+
+  document.getElementById('edit-host-profile-btn').addEventListener('click', () => openHostProfileScreen('edit'));
+  renderMyOffers();
+  document.getElementById('add-offer-btn').addEventListener('click', () => {
+    document.getElementById('offer-form').style.display = 'block';
+    document.getElementById('add-offer-btn').style.display = 'none';
+  });
+  document.getElementById('offer-cancel-btn').addEventListener('click', () => {
+    document.getElementById('offer-form').style.display = 'none';
+    document.getElementById('add-offer-btn').style.display = 'block';
+  });
+  document.getElementById('offer-save-btn').addEventListener('click', submitOffer);
+}
+
+function renderMyOffers() {
+  const listEl = document.getElementById('my-offers-list');
+  if (myOffers.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前尚未提供住宿時段。</div>';
+    return;
+  }
+
+  listEl.innerHTML = myOffers.map(o => {
+    const usedCapacity = o.guests.reduce((sum, g) => sum + (g.guest_count || 1), 0);
+    const full = usedCapacity >= o.capacity_total;
+    const timeRange = [o.check_in_time, o.check_out_time].filter(Boolean).join(' - ');
+    const meta = [o.available_date, timeRange].filter(Boolean).join('　');
+    const guestRows = o.guests.length
+      ? o.guests.map(g => {
+          const names = [g.name].concat(g.additional_guests || []).join('、');
+          return `
+          <div class="passenger-row">
+            <span>👤 ${escapeHtml(names)}　${escapeHtml(g.phone || '')}</span>
+          </div>`;
+        }).join('')
+      : '';
+    const next = STATUS_NEXT[o.offer_status];
+    const statusBtn = (o.guests.length > 0 && next)
+      ? `<button type="button" class="btn-text primary" data-advance="${o.id}" data-next="${next.next}">${next.label}</button>`
+      : '';
+
+    return `
+      <div class="trip-card" data-offer-id="${o.id}">
+        <div class="trip-card-top">
+          <span class="trip-card-name">🏠 ${escapeHtml(meta)}</span>
+          <span class="seats-badge ${full ? 'full' : ''}">${usedCapacity} / ${o.capacity_total} 位</span>
+        </div>
+        ${o.notes ? `<div class="trip-card-meta">📝 ${escapeHtml(o.notes)}</div>` : ''}
+        <span class="trip-status-badge ${o.offer_status}">${STATUS_LABELS[o.offer_status]}</span>
+        ${guestRows}
+        <div class="trip-card-actions">
+          ${statusBtn}
+          <button type="button" class="btn-text danger" data-delete="${o.id}">刪除</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('[data-advance]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await callApi('update_offer_status', { offer_id: btn.dataset.advance, next_status: btn.dataset.next });
+        await loadHostBoard();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定要刪除此住宿時段嗎？已配對的房客將被移回待配對。')) return;
+      btn.disabled = true;
+      try {
+        await callApi('delete_offer', { offer_id: btn.dataset.delete });
+        await loadHostBoard();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function submitOffer() {
+  const errEl = document.getElementById('offer-error');
+  errEl.style.display = 'none';
+  const capacity = document.getElementById('offer-capacity').value.trim();
+  const checkIn = document.getElementById('offer-checkin').value;
+  const checkOut = document.getElementById('offer-checkout').value;
+  if (!capacity || parseInt(capacity, 10) < 1) { errEl.textContent = '請填寫有效的可住人數。'; errEl.style.display = 'block'; return; }
+  if (checkIn && checkOut && checkOut <= checkIn) { errEl.textContent = '退房時間必須晚於入住時間。'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('offer-save-btn');
+  btn.disabled = true;
+  try {
+    await callApi('create_offer', {
+      event_id: currentEvent.id,
+      available_date: document.getElementById('offer-date').value || null,
+      check_in_time: checkIn || null,
+      check_out_time: checkOut || null,
+      capacity_total: parseInt(capacity, 10),
+      notes: document.getElementById('offer-notes').value.trim() || null,
+    });
+    await loadHostBoard();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+/* ================= GUEST ================= */
+
+let myLodgingRequest = null;
+
+async function loadGuestBoard() {
+  const el = document.getElementById('guest-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { request } = await callApi('get_my_lodging_request', { event_id: currentEvent.id });
+    myLodgingRequest = request;
+    renderGuestBoard();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderGuestBoard() {
+  const el = document.getElementById('guest-content');
+
+  if (myLodgingRequest) {
+    const r = myLodgingRequest;
+    const isAssigned = r.status === 'assigned' && r.offer;
+    const cardClass = 'ride-status-card' + (isAssigned ? ' assigned' : '');
+    const title = isAssigned ? '✅ 已配對房東 Matched with a host' : '⏳ 住宿申請處理中 Pending match';
+
+    const details = [];
+    if (isAssigned) {
+      details.push(`🏠 房東：${escapeHtml(r.offer.host_name)}${r.offer.host_phone ? '　' + escapeHtml(r.offer.host_phone) : ''}`);
+      if (r.offer.property_name) details.push(`🏘️ 房源：${escapeHtml(r.offer.property_name)}${r.offer.property_type ? '・' + escapeHtml(r.offer.property_type) : ''}`);
+      if (r.offer.property_address) details.push(`📍 地址：${escapeHtml(r.offer.property_address)}`);
+      const timeRange = [r.offer.check_in_time, r.offer.check_out_time].filter(Boolean).join(' - ');
+      if (r.offer.available_date || timeRange) details.push(`🕒 時間：${escapeHtml([r.offer.available_date, timeRange].filter(Boolean).join(' '))}`);
+      details.push(`目前狀態：${STATUS_LABELS[r.offer.offer_status] || r.offer.offer_status}`);
+    } else {
+      details.push('主辦單位確認房東配對後，將會顯示於此。');
+    }
+    if (r.additional_guests && r.additional_guests.length > 0) {
+      details.push(`👥 隨行房客：${r.additional_guests.map(escapeHtml).join('、')}`);
+    }
+    if (r.notes) details.push(`📝 備註：${escapeHtml(r.notes)}`);
+
+    const showCompleteBtn = isAssigned && r.offer.offer_status === 'occupied';
+
+    el.innerHTML = `
+      <div class="${cardClass}">
+        <div class="title">${title}</div>
+        <div class="details">${details.join('<br>')}</div>
+      </div>
+      ${showCompleteBtn ? '<button type="button" class="submit-btn" id="complete-lodging-btn" style="width:100%;">🙏 感謝天恩師德</button>' : ''}
+      <button type="button" class="btn-text danger" id="cancel-lodging-btn">取消住宿申請</button>`;
+
+    if (showCompleteBtn) {
+      document.getElementById('complete-lodging-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('complete-lodging-btn');
+        btn.disabled = true;
+        try {
+          await callApi('complete_lodging_request', { request_id: r.id });
+          await loadGuestBoard();
+        } catch (err) {
+          alert('確認失敗：' + err.message);
+          btn.disabled = false;
+        }
+      });
+    }
+
+    document.getElementById('cancel-lodging-btn').addEventListener('click', async () => {
+      if (!confirm('確定要取消住宿申請嗎？')) return;
+      try {
+        await callApi('cancel_lodging_request', { request_id: r.id });
+        await loadGuestBoard();
+      } catch (err) {
+        alert('取消失敗：' + err.message);
+      }
+    });
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="section-title">申請住宿 Request lodging</div>
+    <div class="field">
+      <label>您的姓名 Your name</label>
+      <input type="text" id="lodge-name" value="${escapeHtml(lineProfile.displayName || '')}">
+    </div>
+    <div class="field">
+      <label>聯絡電話 Phone</label>
+      <input type="text" id="lodge-phone" placeholder="例：0912-345-678">
+    </div>
+    <div class="field">
+      <label>隨行房客 Additional guests <span class="hint">選填，只需填寫姓名</span></label>
+      <div id="additional-guest-list"></div>
+      <button type="button" class="add-btn" id="add-guest-btn" style="margin-bottom:0;">＋ 新增隨行房客 Add guest</button>
+    </div>
+    <div class="field">
+      <label>備註 Notes <span class="hint">選填</span></label>
+      <textarea id="lodge-notes"></textarea>
+    </div>
+    <p class="modal-error" id="lodge-error"></p>
+    <button type="button" class="submit-btn" id="lodge-submit-btn" style="width:100%;">送出申請 Submit</button>`;
+
+  document.getElementById('add-guest-btn').addEventListener('click', () => addAdditionalGuestRow());
+
+  document.getElementById('lodge-submit-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('lodge-error');
+    errEl.style.display = 'none';
+
+    const name = document.getElementById('lodge-name').value.trim();
+    const phone = document.getElementById('lodge-phone').value.trim();
+    if (!name || !phone) { errEl.textContent = '請填寫姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+
+    const additionalGuests = Array.from(document.querySelectorAll('.additional-passenger-input'))
+      .map(input => input.value.trim())
+      .filter(v => v.length > 0);
+
+    const btn = document.getElementById('lodge-submit-btn');
+    btn.disabled = true;
+    try {
+      await callApi('create_lodging_request', {
+        event_id: currentEvent.id,
+        guest_name: name,
+        guest_phone: phone,
+        additional_guests: additionalGuests,
+        notes: document.getElementById('lodge-notes').value.trim() || null,
+      });
+      await loadGuestBoard();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+    }
+  });
+}
+
+function addAdditionalGuestRow() {
+  const listEl = document.getElementById('additional-guest-list');
+  const row = document.createElement('div');
+  row.className = 'additional-passenger-row';
+  row.innerHTML = `
+    <input type="text" class="additional-passenger-input" placeholder="姓名 Name">
+    <button type="button" class="remove-passenger-btn">✕</button>`;
+  row.querySelector('.remove-passenger-btn').addEventListener('click', () => row.remove());
+  listEl.appendChild(row);
+}
+
+/* ================= LODGING MANAGER ================= */
+
+let managerOffers = [];
+let managerRequests = [];
+
+async function loadManagerBoard() {
+  const el = document.getElementById('manager-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const [{ offers }, { requests }] = await Promise.all([
+      callApi('list_offers_for_event', { event_id: currentEvent.id }),
+      callApi('list_requests_for_event', { event_id: currentEvent.id }),
+    ]);
+    managerOffers = offers || [];
+    managerRequests = requests || [];
+    renderManagerBoard();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderManagerBoard() {
+  const el = document.getElementById('manager-content');
+  el.innerHTML = `
+    <div class="section-title">住宿房源 Hosts</div>
+    <div id="mgr-offers-list"></div>
+    <div class="section-title">住宿申請 Lodging requests</div>
+    <div id="mgr-requests-list"></div>`;
+  renderManagerOffers();
+  renderManagerRequests();
+}
+
+function renderManagerOffers() {
+  const listEl = document.getElementById('mgr-offers-list');
+  if (managerOffers.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前尚無人提供住宿。</div>';
+    return;
+  }
+
+  listEl.innerHTML = managerOffers.map(o => {
+    const usedCapacity = o.guests.reduce((sum, g) => sum + (g.guest_count || 1), 0);
+    const full = usedCapacity >= o.capacity_total;
+    const timeRange = [o.check_in_time, o.check_out_time].filter(Boolean).join(' - ');
+    const meta = [o.available_date, timeRange].filter(Boolean).join('　');
+    const propertyInfo = [o.property_name, o.property_type].filter(Boolean).join('・');
+    const guestRows = o.guests.map(g => {
+      const names = [g.name].concat(g.additional_guests || []).join('、');
+      return `
+      <div class="passenger-row">
+        <span>👤 ${escapeHtml(names)}　${escapeHtml(g.phone || '')}</span>
+        <button type="button" class="btn-text" data-unassign="${g.request_id}">取消配對</button>
+      </div>`;
+    }).join('');
+    const availableBtn = o.offer_status === 'occupied'
+      ? `<button type="button" class="btn-text primary" data-available="${o.id}">標記為可入住 Mark available</button>`
+      : '';
+
+    return `
+      <div class="trip-card" data-offer-id="${o.id}">
+        <div class="trip-card-top">
+          <span class="trip-card-name">${escapeHtml(o.host_name)}${o.host_phone ? '　' + escapeHtml(o.host_phone) : ''}</span>
+          <span class="seats-badge ${full ? 'full' : ''}">${usedCapacity} / ${o.capacity_total} 位</span>
+        </div>
+        <div class="trip-card-meta">${escapeHtml(meta)}${propertyInfo ? '　🏠 ' + escapeHtml(propertyInfo) : ''}</div>
+        <div class="trip-card-meta">📍 房源地址：${escapeHtml(o.property_address || '—')}</div>
+        <span class="trip-status-badge ${o.offer_status}">${STATUS_LABELS[o.offer_status] || o.offer_status}</span>
+        ${guestRows}
+        <div class="trip-card-actions">
+          ${availableBtn}
+          <button type="button" class="btn-text danger" data-delete-offer="${o.id}">刪除此房源</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('[data-unassign]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await callApi('unassign_lodging_request', { request_id: btn.dataset.unassign });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('取消配對失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-available]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await callApi('mark_offer_available', { id: btn.dataset.available });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete-offer]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定要刪除此住宿房源嗎？已配對的房客將被移回待配對。')) return;
+      btn.disabled = true;
+      try {
+        await callApi('manager_delete_offer', { id: btn.dataset.deleteOffer });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function renderManagerRequests() {
+  const listEl = document.getElementById('mgr-requests-list');
+  const pending = managerRequests.filter(r => r.status === 'pending');
+  if (pending.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前沒有待配對的住宿申請。</div>';
+    return;
+  }
+
+  const usedCapacityFor = (offerId) => (managerOffers.find(o => o.id === offerId)?.guests || []).reduce((sum, g) => sum + (g.guest_count || 1), 0);
+
+  listEl.innerHTML = pending.map(r => {
+    const names = [r.name].concat(r.additional_guests || []).join('、');
+    const offerOptions = managerOffers
+      .filter(o => usedCapacityFor(o.id) + (r.guest_count || 1) <= o.capacity_total)
+      .map(o => `<option value="${o.id}">${escapeHtml(o.host_name)}・${escapeHtml(o.property_name || '—')}（尚有 ${o.capacity_total - usedCapacityFor(o.id)} 位）</option>`)
+      .join('');
+
+    return `
+    <div class="trip-card" data-request-id="${r.id}">
+      <div class="trip-card-top">
+        <span class="trip-card-name">${escapeHtml(names)}</span>
+      </div>
+      <div class="trip-card-meta">${escapeHtml(r.phone || '')}</div>
+      <div class="trip-card-actions">
+        <select class="request-select" data-assign="${r.id}">
+          <option value="">指派給房東…</option>
+          ${offerOptions}
+        </select>
+        <button type="button" class="btn-text danger" data-delete-request="${r.id}">刪除</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('[data-assign]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const offerId = sel.value;
+      if (!offerId) return;
+      sel.disabled = true;
+      try {
+        await callApi('assign_lodging_request', { request_id: sel.dataset.assign, offer_id: offerId });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('指派失敗：' + err.message);
+        sel.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete-request]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定要刪除此住宿申請嗎？')) return;
+      btn.disabled = true;
+      try {
+        await callApi('manager_delete_lodging_request', { id: btn.dataset.deleteRequest });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+/* ================= LIFF BOOT ================= */
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'lodging').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    setLoadingText('載入中…');
+    whoami = await callApi('whoami');
+    renderRoleList();
+
+    showScreen('role');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+initLiff();
+</script>
+</body>
+</html>
