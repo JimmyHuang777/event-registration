@@ -97,18 +97,31 @@ async function verifyLineToken(idToken: string) {
   return data as { sub: string; name?: string; picture?: string };
 }
 
-// Trip status progresses one step at a time — the driver clicks
-// through it in order, never skips or goes back.
-const STATUS_ORDER = ["not_started", "heading_to_pickup", "arrived", "delivered"];
+// Trip status progresses one step at a time. The driver clicks
+// through the first five stages themselves, never skipping or going
+// back; the final step (arrived_destination -> idle, marking the
+// driver free again) is a Car Manager action instead, done via
+// mark_trip_idle below.
+const DRIVER_STATUS_ORDER = [
+  "not_started", "heading_to_pickup", "arrived_pickup", "heading_to_destination", "arrived_destination",
+];
 
 const MANAGER_ACTIONS = new Set([
   "list_trips_for_event",
   "list_requests_for_event",
   "assign_ride_request",
   "unassign_ride_request",
+  "mark_trip_idle",
   "manager_delete_trip",
   "manager_delete_ride_request",
 ]);
+
+// How many passengers one ride_request actually represents — the
+// primary passenger plus everyone in additional_passengers.
+function requestPassengerCount(req: { additional_passengers?: unknown }) {
+  const extra = Array.isArray(req.additional_passengers) ? req.additional_passengers.length : 0;
+  return 1 + extra;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -167,7 +180,7 @@ serve(async (req) => {
       case "whoami": {
         const { data: profile } = await supabase
           .from("driver_profiles")
-          .select("car_brand, car_color, car_plate")
+          .select("contact_name, contact_phone, car_brand, car_color, car_plate")
           .eq("user_id", existingUser.id)
           .maybeSingle();
         return json({ user: existingUser, is_car_manager: isManager, driver_profile: profile || null });
@@ -206,11 +219,17 @@ serve(async (req) => {
         return json({ events });
       }
 
-      // ---- Create/update the caller's persistent car profile ----
+      // ---- Create/update the caller's persistent driver profile:
+      // their own contact info PLUS car info, kept separate from the
+      // shared `users` row (same reason registrations keeps its own
+      // attendee_name/attendee_phone) ----
       case "save_driver_profile": {
+        const contactName = (body.contact_name || "").trim();
+        const contactPhone = (body.contact_phone || "").trim();
         const carBrand = (body.car_brand || "").trim();
         const carColor = (body.car_color || "").trim();
         const carPlate = (body.car_plate || "").trim();
+        if (!contactName || !contactPhone) return json({ error: "請填寫司機姓名與聯絡電話。" }, 400);
         if (!carBrand || !carPlate) return json({ error: "請填寫車輛廠牌與車牌號碼。" }, 400);
 
         const { data, error } = await supabase
@@ -218,6 +237,8 @@ serve(async (req) => {
           .upsert(
             {
               user_id: existingUser.id,
+              contact_name: contactName,
+              contact_phone: contactPhone,
               car_brand: carBrand,
               car_color: carColor || null,
               car_plate: carPlate,
@@ -250,14 +271,17 @@ serve(async (req) => {
         if (tripIds.length > 0) {
           const { data: assigned } = await supabase
             .from("ride_requests")
-            .select("id, trip_id, pickup_area, notes, users ( display_name, phone )")
+            .select("id, trip_id, passenger_name, passenger_phone, pickup_area, destination, additional_passengers, notes")
             .in("trip_id", tripIds)
             .eq("status", "assigned");
           (assigned || []).forEach((r: any) => {
             (passengersByTrip[r.trip_id] ||= []).push({
-              name: r.users?.display_name || "—",
-              phone: r.users?.phone || "",
+              name: r.passenger_name || "—",
+              phone: r.passenger_phone || "",
               pickup_area: r.pickup_area,
+              destination: r.destination,
+              additional_passengers: r.additional_passengers || [],
+              passenger_count: requestPassengerCount(r),
               notes: r.notes,
             });
           });
@@ -329,9 +353,9 @@ serve(async (req) => {
           return json({ error: "您只能更新自己提供的共乘狀態。" }, 403);
         }
 
-        const currentIdx = STATUS_ORDER.indexOf(trip.trip_status);
-        const nextIdx = STATUS_ORDER.indexOf(next_status);
-        if (nextIdx !== currentIdx + 1) {
+        const currentIdx = DRIVER_STATUS_ORDER.indexOf(trip.trip_status);
+        const nextIdx = DRIVER_STATUS_ORDER.indexOf(next_status);
+        if (currentIdx === -1 || nextIdx !== currentIdx + 1) {
           return json({ error: "狀態只能依序推進，請重新整理頁面。" }, 400);
         }
 
@@ -353,7 +377,7 @@ serve(async (req) => {
         const { data: reqRow } = await supabase
           .from("ride_requests")
           .select(
-            "id, status, pickup_area, notes, trip_id, car_trips ( driver_user_id, available_date, available_time, departure_point, trip_status, users ( display_name, phone ) )"
+            "id, status, pickup_area, destination, additional_passengers, notes, trip_id, car_trips ( driver_user_id, available_date, available_time, departure_point, trip_status )"
           )
           .eq("event_id", event_id)
           .eq("user_id", existingUser.id)
@@ -363,14 +387,14 @@ serve(async (req) => {
         if (!reqRow) return json({ request: null });
 
         const trip = reqRow.car_trips as any;
-        let carProfile: any = null;
+        let driverProfile: any = null;
         if (trip) {
           const { data: profile } = await supabase
             .from("driver_profiles")
-            .select("car_brand, car_color, car_plate")
+            .select("contact_name, contact_phone, car_brand, car_color, car_plate")
             .eq("user_id", trip.driver_user_id)
             .maybeSingle();
-          carProfile = profile;
+          driverProfile = profile;
         }
 
         return json({
@@ -378,6 +402,8 @@ serve(async (req) => {
             id: reqRow.id,
             status: reqRow.status,
             pickup_area: reqRow.pickup_area,
+            destination: reqRow.destination,
+            additional_passengers: reqRow.additional_passengers || [],
             notes: reqRow.notes,
             trip: trip
               ? {
@@ -385,11 +411,11 @@ serve(async (req) => {
                   available_time: trip.available_time,
                   departure_point: trip.departure_point,
                   trip_status: trip.trip_status,
-                  driver_name: trip.users?.display_name || "—",
-                  driver_phone: trip.users?.phone || "",
-                  car_brand: carProfile?.car_brand || "",
-                  car_color: carProfile?.car_color || "",
-                  car_plate: carProfile?.car_plate || "",
+                  driver_name: driverProfile?.contact_name || "—",
+                  driver_phone: driverProfile?.contact_phone || "",
+                  car_brand: driverProfile?.car_brand || "",
+                  car_color: driverProfile?.car_color || "",
+                  car_plate: driverProfile?.car_plate || "",
                 }
               : null,
           },
@@ -398,15 +424,27 @@ serve(async (req) => {
 
       // ---- Request a ride for one event ----
       case "create_ride_request": {
-        const { event_id, pickup_area, notes } = body;
+        const { event_id, passenger_name, passenger_phone, pickup_area, destination, notes } = body;
         if (!event_id) return json({ error: "Missing event_id." }, 400);
+
+        const passengerName = (passenger_name || "").trim();
+        const passengerPhone = (passenger_phone || "").trim();
+        if (!passengerName || !passengerPhone) return json({ error: "請填寫姓名與聯絡電話。" }, 400);
+
+        const additionalPassengers = Array.isArray(body.additional_passengers)
+          ? body.additional_passengers.map((n: unknown) => String(n || "").trim()).filter((n: string) => n.length > 0)
+          : [];
 
         const { data, error } = await supabase
           .from("ride_requests")
           .insert({
             event_id,
             user_id: existingUser.id,
+            passenger_name: passengerName,
+            passenger_phone: passengerPhone,
             pickup_area: (pickup_area || "").trim() || null,
+            destination: (destination || "").trim() || null,
+            additional_passengers: additionalPassengers,
             notes: (notes || "").trim() || null,
           })
           .select()
@@ -449,7 +487,7 @@ serve(async (req) => {
 
         const { data: trips, error } = await supabase
           .from("car_trips")
-          .select("id, driver_user_id, available_date, available_time, departure_point, seats_total, notes, trip_status, created_at, users ( display_name, phone )")
+          .select("id, driver_user_id, available_date, available_time, departure_point, seats_total, notes, trip_status, created_at")
           .eq("event_id", event_id)
           .order("created_at", { ascending: true });
         if (error) return json({ error: error.message }, 400);
@@ -461,15 +499,18 @@ serve(async (req) => {
         if (tripIds.length > 0) {
           const { data: assigned } = await supabase
             .from("ride_requests")
-            .select("id, trip_id, pickup_area, notes, users ( display_name, phone )")
+            .select("id, trip_id, passenger_name, passenger_phone, pickup_area, destination, additional_passengers, notes")
             .in("trip_id", tripIds)
             .eq("status", "assigned");
           (assigned || []).forEach((r: any) => {
             (passengersByTrip[r.trip_id] ||= []).push({
               request_id: r.id,
-              name: r.users?.display_name || "—",
-              phone: r.users?.phone || "",
+              name: r.passenger_name || "—",
+              phone: r.passenger_phone || "",
               pickup_area: r.pickup_area,
+              destination: r.destination,
+              additional_passengers: r.additional_passengers || [],
+              passenger_count: requestPassengerCount(r),
               notes: r.notes,
             });
           });
@@ -479,7 +520,7 @@ serve(async (req) => {
         if (driverIds.length > 0) {
           const { data: profiles } = await supabase
             .from("driver_profiles")
-            .select("user_id, car_brand, car_color, car_plate")
+            .select("user_id, contact_name, contact_phone, car_brand, car_color, car_plate")
             .in("user_id", driverIds);
           (profiles || []).forEach((p: any) => { profileByDriver[p.user_id] = p; });
         }
@@ -488,8 +529,8 @@ serve(async (req) => {
           const profile = profileByDriver[t.driver_user_id];
           return {
             id: t.id,
-            driver_name: t.users?.display_name || "—",
-            driver_phone: t.users?.phone || "",
+            driver_name: profile?.contact_name || "—",
+            driver_phone: profile?.contact_phone || "",
             car_brand: profile?.car_brand || "",
             car_color: profile?.car_color || "",
             car_plate: profile?.car_plate || "",
@@ -511,7 +552,7 @@ serve(async (req) => {
 
         const { data, error } = await supabase
           .from("ride_requests")
-          .select("id, status, pickup_area, notes, trip_id, created_at, users ( display_name, phone )")
+          .select("id, status, passenger_name, passenger_phone, pickup_area, destination, additional_passengers, notes, trip_id, created_at")
           .eq("event_id", event_id)
           .neq("status", "cancelled")
           .order("created_at", { ascending: true });
@@ -521,10 +562,13 @@ serve(async (req) => {
           id: r.id,
           status: r.status,
           pickup_area: r.pickup_area,
+          destination: r.destination,
+          additional_passengers: r.additional_passengers || [],
+          passenger_count: requestPassengerCount(r),
           notes: r.notes,
           trip_id: r.trip_id,
-          name: r.users?.display_name || "—",
-          phone: r.users?.phone || "",
+          name: r.passenger_name || "—",
+          phone: r.passenger_phone || "",
         }));
         return json({ requests });
       }
@@ -536,13 +580,23 @@ serve(async (req) => {
         const { data: trip } = await supabase.from("car_trips").select("id, seats_total").eq("id", trip_id).maybeSingle();
         if (!trip) return json({ error: "找不到此共乘車輛。" }, 404);
 
-        const { count } = await supabase
+        const { data: requestRow } = await supabase
           .from("ride_requests")
-          .select("id", { count: "exact", head: true })
+          .select("id, additional_passengers")
+          .eq("id", request_id)
+          .maybeSingle();
+        if (!requestRow) return json({ error: "找不到此共乘申請。" }, 404);
+        const requestSeats = requestPassengerCount(requestRow);
+
+        const { data: assignedRows } = await supabase
+          .from("ride_requests")
+          .select("additional_passengers")
           .eq("trip_id", trip_id)
           .eq("status", "assigned");
-        if ((count || 0) >= trip.seats_total) {
-          return json({ error: "此車輛座位已滿，請選擇其他車輛或增加座位數。" }, 400);
+        const usedSeats = (assignedRows || []).reduce((sum: number, r: any) => sum + requestPassengerCount(r), 0);
+
+        if (usedSeats + requestSeats > trip.seats_total) {
+          return json({ error: "此車輛座位不足，請選擇其他車輛或增加座位數。" }, 400);
         }
 
         const { error } = await supabase
@@ -562,6 +616,23 @@ serve(async (req) => {
           .eq("id", request_id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
+      }
+
+      // ---- Manager marks a trip that finished its run (arrived at
+      // destination) as idle again, freeing the driver ----
+      case "mark_trip_idle": {
+        const { id } = body;
+        if (!id) return json({ error: "Missing id." }, 400);
+
+        const { data: trip } = await supabase.from("car_trips").select("id, trip_status").eq("id", id).maybeSingle();
+        if (!trip) return json({ error: "找不到此共乘車輛。" }, 404);
+        if (trip.trip_status !== "arrived_destination") {
+          return json({ error: "只有已抵達目的地的共乘，才能標記為待命中。" }, 400);
+        }
+
+        const { data, error } = await supabase.from("car_trips").update({ trip_status: "idle" }).eq("id", id).select().single();
+        if (error) return json({ error: error.message }, 400);
+        return json({ trip: data });
       }
 
       case "manager_delete_trip": {

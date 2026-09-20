@@ -98,8 +98,15 @@
   .trip-status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; display: inline-block; margin-top: 8px; }
   .trip-status-badge.not_started { background: var(--canvas); color: var(--ink-soft); }
   .trip-status-badge.heading_to_pickup { background: var(--amber-bg); color: var(--amber); }
-  .trip-status-badge.arrived { background: var(--blue-bg); color: var(--blue); }
-  .trip-status-badge.delivered { background: #E4F8EC; color: var(--line-green-dark); }
+  .trip-status-badge.arrived_pickup { background: var(--blue-bg); color: var(--blue); }
+  .trip-status-badge.heading_to_destination { background: var(--amber-bg); color: var(--amber); }
+  .trip-status-badge.arrived_destination { background: #E4F8EC; color: var(--line-green-dark); }
+  .trip-status-badge.idle { background: var(--canvas); color: var(--ink-soft); }
+
+  .passenger-list-note { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+  .additional-passenger-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .additional-passenger-row input { flex: 1; }
+  .additional-passenger-row .remove-passenger-btn { background: none; border: none; color: var(--error); font-size: 18px; cursor: pointer; padding: 4px 8px; font-family: inherit; }
   .passenger-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 8px; }
   .trip-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   .btn-text { background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 10px; font-family: inherit; }
@@ -149,6 +156,17 @@
       <span class="name" id="profile-name">—</span>
     </div>
     <div class="menu-list" id="role-list"></div>
+  </div>
+
+  <div id="driver-profile-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="driver-profile-back-btn">‹</button>
+      <div class="titles">
+        <h1>🚘 司機資料 Driver info</h1>
+        <p id="driver-profile-subtitle">請先登記您的聯絡方式與車輛資訊</p>
+      </div>
+    </div>
+    <div class="content" id="driver-profile-content"></div>
   </div>
 
   <div id="event-screen" class="board-screen">
@@ -254,12 +272,18 @@ function escapeHtml(str) {
 }
 
 const STATUS_LABELS = {
-  not_started: '尚未出發', heading_to_pickup: '前往接送地中', arrived: '已抵達接送地', delivered: '已送達',
+  not_started: '尚未出發',
+  heading_to_pickup: '前往接送地中',
+  arrived_pickup: '已抵達接送地',
+  heading_to_destination: '正在前往目的地',
+  arrived_destination: '已抵達目的地',
+  idle: '待命中 Idle',
 };
 const STATUS_NEXT = {
   not_started: { next: 'heading_to_pickup', label: '出發前往接送地' },
-  heading_to_pickup: { next: 'arrived', label: '已抵達' },
-  arrived: { next: 'delivered', label: '已送達' },
+  heading_to_pickup: { next: 'arrived_pickup', label: '已抵達接送地' },
+  arrived_pickup: { next: 'heading_to_destination', label: '前往目的地' },
+  heading_to_destination: { next: 'arrived_destination', label: '已抵達目的地' },
 };
 
 /* ---------- Role picker ---------- */
@@ -288,10 +312,96 @@ function renderRoleList() {
       </div>
       <div class="menu-arrow">›</div>
     `;
-    card.addEventListener('click', () => openEventPicker(r.key));
+    card.addEventListener('click', () => {
+      if (r.key === 'driver' && !whoami.driver_profile) {
+        openDriverProfileScreen('setup');
+      } else {
+        openEventPicker(r.key);
+      }
+    });
     listEl.appendChild(card);
   });
 }
+
+/* ---------- Driver profile (contact info + car info, set once,
+   required before a driver can see any event) ---------- */
+
+let driverProfileMode = 'setup'; // 'setup' | 'edit'
+
+function openDriverProfileScreen(mode) {
+  driverProfileMode = mode;
+  document.getElementById('driver-profile-subtitle').textContent =
+    mode === 'setup' ? '請先登記您的聯絡方式與車輛資訊，才能查看可提供共乘的活動' : '更新您的聯絡方式與車輛資訊';
+  renderDriverProfileForm();
+  showScreen('driver-profile');
+}
+
+function renderDriverProfileForm() {
+  const p = whoami.driver_profile;
+  const el = document.getElementById('driver-profile-content');
+  el.innerHTML = `
+    <div class="field">
+      <label>司機姓名 Your name</label>
+      <input type="text" id="dp-name" value="${p ? escapeHtml(p.contact_name || '') : escapeHtml(lineProfile.displayName || '')}">
+    </div>
+    <div class="field">
+      <label>聯絡電話 Phone</label>
+      <input type="text" id="dp-phone" placeholder="例：0912-345-678" value="${p ? escapeHtml(p.contact_phone || '') : ''}">
+    </div>
+    <div class="field">
+      <label>車輛廠牌 Car brand</label>
+      <input type="text" id="dp-brand" placeholder="例：Toyota Altis" value="${p ? escapeHtml(p.car_brand || '') : ''}">
+    </div>
+    <div class="field">
+      <label>顏色 Color <span class="hint">選填</span></label>
+      <input type="text" id="dp-color" placeholder="例：白色" value="${p ? escapeHtml(p.car_color || '') : ''}">
+    </div>
+    <div class="field">
+      <label>車牌號碼 Plate number</label>
+      <input type="text" id="dp-plate" placeholder="例：ABC-1234" value="${p ? escapeHtml(p.car_plate || '') : ''}">
+    </div>
+    <p class="modal-error" id="dp-error"></p>
+    <button type="button" class="submit-btn" id="dp-save-btn" style="width:100%;">儲存 Save</button>
+  `;
+  document.getElementById('dp-save-btn').addEventListener('click', saveDriverProfileScreen);
+}
+
+async function saveDriverProfileScreen() {
+  const errEl = document.getElementById('dp-error');
+  errEl.style.display = 'none';
+  const name = document.getElementById('dp-name').value.trim();
+  const phone = document.getElementById('dp-phone').value.trim();
+  const brand = document.getElementById('dp-brand').value.trim();
+  const color = document.getElementById('dp-color').value.trim();
+  const plate = document.getElementById('dp-plate').value.trim();
+
+  if (!name || !phone) { errEl.textContent = '請填寫司機姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+  if (!brand || !plate) { errEl.textContent = '請填寫車輛廠牌與車牌號碼。'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('dp-save-btn');
+  btn.disabled = true;
+  try {
+    const { driver_profile } = await callApi('save_driver_profile', {
+      contact_name: name, contact_phone: phone, car_brand: brand, car_color: color, car_plate: plate,
+    });
+    whoami.driver_profile = driver_profile;
+    driverProfile = driver_profile;
+    if (driverProfileMode === 'setup') {
+      openEventPicker('driver');
+    } else {
+      showScreen('driver');
+      renderDriverBoard();
+    }
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('driver-profile-back-btn').addEventListener('click', () => {
+  showScreen(driverProfileMode === 'setup' ? 'role' : 'driver');
+});
 
 /* ---------- Event picker ---------- */
 
@@ -364,8 +474,7 @@ async function loadDriverBoard() {
   const el = document.getElementById('driver-content');
   el.innerHTML = '<div class="empty-note">載入中…</div>';
   try {
-    const w = await callApi('whoami');
-    driverProfile = w.driver_profile;
+    driverProfile = whoami.driver_profile;
     const { trips } = await callApi('list_my_trips', { event_id: currentEvent.id });
     myTrips = trips || [];
     renderDriverBoard();
@@ -377,117 +486,59 @@ async function loadDriverBoard() {
 function renderDriverBoard() {
   const el = document.getElementById('driver-content');
 
-  const profileHTML = driverProfile
-    ? `<div class="car-profile-card">
-        🚘 ${escapeHtml(driverProfile.car_brand)}${driverProfile.car_color ? '・' + escapeHtml(driverProfile.car_color) : ''}<br>
-        車牌 ${escapeHtml(driverProfile.car_plate)}
-        <div><button type="button" class="edit-link" id="edit-car-profile-btn">編輯車輛資訊 Edit</button></div>
-      </div>`
-    : '';
+  const profileHTML = `<div class="car-profile-card">
+      👤 ${escapeHtml(driverProfile.contact_name)}　${escapeHtml(driverProfile.contact_phone)}<br>
+      🚘 ${escapeHtml(driverProfile.car_brand)}${driverProfile.car_color ? '・' + escapeHtml(driverProfile.car_color) : ''}　車牌 ${escapeHtml(driverProfile.car_plate)}
+      <div><button type="button" class="edit-link" id="edit-driver-profile-btn">編輯司機資料 Edit</button></div>
+    </div>`;
 
-  const profileFormHTML = `
-    <div id="car-profile-form" style="${driverProfile ? 'display:none;' : ''}">
-      <div class="section-title">登記車輛資訊 Register your car</div>
-      <div class="field">
-        <label>車輛廠牌 Car brand</label>
-        <input type="text" id="cp-brand" placeholder="例：Toyota Altis" value="${driverProfile ? escapeHtml(driverProfile.car_brand) : ''}">
+  const tripsHTML = `
+    <div class="section-title">我提供的共乘 My trips for this event</div>
+    <div id="my-trips-list"></div>
+    <button type="button" class="add-btn" id="add-trip-btn">＋ 新增可載送時段 Add availability</button>
+    <div id="trip-form" style="display:none;">
+      <div class="field-row">
+        <div class="field">
+          <label>日期 Date</label>
+          <input type="date" id="trip-date">
+        </div>
+        <div class="field">
+          <label>時間 Time</label>
+          <input type="time" id="trip-time">
+        </div>
       </div>
       <div class="field">
-        <label>顏色 Color <span class="hint">選填</span></label>
-        <input type="text" id="cp-color" placeholder="例：白色" value="${driverProfile ? escapeHtml(driverProfile.car_color || '') : ''}">
+        <label>接送地點 Pickup point</label>
+        <input type="text" id="trip-point" placeholder="例：台北車站">
       </div>
       <div class="field">
-        <label>車牌號碼 Plate number</label>
-        <input type="text" id="cp-plate" placeholder="例：ABC-1234" value="${driverProfile ? escapeHtml(driverProfile.car_plate) : ''}">
+        <label>座位數 Seats available</label>
+        <input type="number" id="trip-seats" min="1" value="4">
       </div>
-      <p class="modal-error" id="cp-error"></p>
+      <div class="field">
+        <label>備註 Notes <span class="hint">選填</span></label>
+        <textarea id="trip-notes"></textarea>
+      </div>
+      <p class="modal-error" id="trip-error"></p>
       <div class="form-actions">
-        ${driverProfile ? '<button type="button" class="btn-cancel" id="cp-cancel-btn">取消</button>' : ''}
-        <button type="button" class="submit-btn" id="cp-save-btn">儲存 Save</button>
+        <button type="button" class="btn-cancel" id="trip-cancel-btn">取消</button>
+        <button type="button" class="submit-btn" id="trip-save-btn">送出 Submit</button>
       </div>
     </div>`;
 
-  const tripsHTML = driverProfile
-    ? `<div class="section-title">我提供的共乘 My trips for this event</div>
-       <div id="my-trips-list"></div>
-       <button type="button" class="add-btn" id="add-trip-btn">＋ 新增可載送時段 Add availability</button>
-       <div id="trip-form" style="display:none;">
-         <div class="field-row">
-           <div class="field">
-             <label>日期 Date</label>
-             <input type="date" id="trip-date">
-           </div>
-           <div class="field">
-             <label>時間 Time</label>
-             <input type="time" id="trip-time">
-           </div>
-         </div>
-         <div class="field">
-           <label>接送地點 Pickup point</label>
-           <input type="text" id="trip-point" placeholder="例：台北車站">
-         </div>
-         <div class="field">
-           <label>座位數 Seats available</label>
-           <input type="number" id="trip-seats" min="1" value="4">
-         </div>
-         <div class="field">
-           <label>備註 Notes <span class="hint">選填</span></label>
-           <textarea id="trip-notes"></textarea>
-         </div>
-         <p class="modal-error" id="trip-error"></p>
-         <div class="form-actions">
-           <button type="button" class="btn-cancel" id="trip-cancel-btn">取消</button>
-           <button type="button" class="submit-btn" id="trip-save-btn">送出 Submit</button>
-         </div>
-       </div>`
-    : '';
+  el.innerHTML = profileHTML + tripsHTML;
 
-  el.innerHTML = profileHTML + profileFormHTML + tripsHTML;
-
-  if (driverProfile) {
-    document.getElementById('edit-car-profile-btn').addEventListener('click', () => {
-      document.getElementById('car-profile-form').style.display = 'block';
-    });
-    document.getElementById('cp-cancel-btn')?.addEventListener('click', () => {
-      document.getElementById('car-profile-form').style.display = 'none';
-    });
-    renderMyTrips();
-    document.getElementById('add-trip-btn').addEventListener('click', () => {
-      document.getElementById('trip-form').style.display = 'block';
-      document.getElementById('add-trip-btn').style.display = 'none';
-    });
-    document.getElementById('trip-cancel-btn').addEventListener('click', () => {
-      document.getElementById('trip-form').style.display = 'none';
-      document.getElementById('add-trip-btn').style.display = 'block';
-    });
-    document.getElementById('trip-save-btn').addEventListener('click', submitTrip);
-  }
-
-  document.getElementById('cp-save-btn').addEventListener('click', saveDriverProfile);
-}
-
-async function saveDriverProfile() {
-  const errEl = document.getElementById('cp-error');
-  errEl.style.display = 'none';
-  const brand = document.getElementById('cp-brand').value.trim();
-  const color = document.getElementById('cp-color').value.trim();
-  const plate = document.getElementById('cp-plate').value.trim();
-  if (!brand || !plate) {
-    errEl.textContent = '請填寫車輛廠牌與車牌號碼。';
-    errEl.style.display = 'block';
-    return;
-  }
-  const btn = document.getElementById('cp-save-btn');
-  btn.disabled = true;
-  try {
-    const { driver_profile } = await callApi('save_driver_profile', { car_brand: brand, car_color: color, car_plate: plate });
-    driverProfile = driver_profile;
-    renderDriverBoard();
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.style.display = 'block';
-    btn.disabled = false;
-  }
+  document.getElementById('edit-driver-profile-btn').addEventListener('click', () => openDriverProfileScreen('edit'));
+  renderMyTrips();
+  document.getElementById('add-trip-btn').addEventListener('click', () => {
+    document.getElementById('trip-form').style.display = 'block';
+    document.getElementById('add-trip-btn').style.display = 'none';
+  });
+  document.getElementById('trip-cancel-btn').addEventListener('click', () => {
+    document.getElementById('trip-form').style.display = 'none';
+    document.getElementById('add-trip-btn').style.display = 'block';
+  });
+  document.getElementById('trip-save-btn').addEventListener('click', submitTrip);
 }
 
 function renderMyTrips() {
@@ -498,13 +549,17 @@ function renderMyTrips() {
   }
 
   listEl.innerHTML = myTrips.map(t => {
-    const full = t.passengers.length >= t.seats_total;
+    const usedSeats = t.passengers.reduce((sum, p) => sum + (p.passenger_count || 1), 0);
+    const full = usedSeats >= t.seats_total;
     const meta = [t.available_date, t.available_time, t.departure_point].filter(Boolean).join('　');
     const passengerRows = t.passengers.length
-      ? t.passengers.map(p => `
+      ? t.passengers.map(p => {
+          const names = [p.name].concat(p.additional_passengers || []).join('、');
+          return `
           <div class="passenger-row">
-            <span>👤 ${escapeHtml(p.name)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}</span>
-          </div>`).join('')
+            <span>👤 ${escapeHtml(names)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}${p.destination ? '　🎯' + escapeHtml(p.destination) : ''}</span>
+          </div>`;
+        }).join('')
       : '';
     const next = STATUS_NEXT[t.trip_status];
     const statusBtn = (t.passengers.length > 0 && next)
@@ -515,7 +570,7 @@ function renderMyTrips() {
       <div class="trip-card" data-trip-id="${t.id}">
         <div class="trip-card-top">
           <span class="trip-card-name">🚗 ${escapeHtml(meta)}</span>
-          <span class="seats-badge ${full ? 'full' : ''}">${t.passengers.length} / ${t.seats_total} 位</span>
+          <span class="seats-badge ${full ? 'full' : ''}">${usedSeats} / ${t.seats_total} 位</span>
         </div>
         ${t.notes ? `<div class="trip-card-meta">📝 ${escapeHtml(t.notes)}</div>` : ''}
         <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status]}</span>
@@ -613,11 +668,15 @@ function renderPassengerBoard() {
       if (r.trip.car_brand) details.push(`🚘 車輛：${escapeHtml(r.trip.car_brand)}${r.trip.car_color ? '・' + escapeHtml(r.trip.car_color) : ''}${r.trip.car_plate ? '　' + escapeHtml(r.trip.car_plate) : ''}`);
       if (r.trip.available_date || r.trip.available_time) details.push(`🕒 時間：${escapeHtml([r.trip.available_date, r.trip.available_time].filter(Boolean).join(' '))}`);
       if (r.trip.departure_point) details.push(`📍 接送地點：${escapeHtml(r.trip.departure_point)}`);
-      details.push(`目前狀態：${STATUS_LABELS[r.trip.trip_status]}`);
+      details.push(`目前狀態：${STATUS_LABELS[r.trip.trip_status] || r.trip.trip_status}`);
     } else {
       details.push('主辦單位確認司機配對後，將會顯示於此。');
     }
-    if (r.pickup_area) details.push(`📍 我的搭車地點：${escapeHtml(r.pickup_area)}`);
+    if (r.pickup_area) details.push(`📍 搭車地點：${escapeHtml(r.pickup_area)}`);
+    if (r.destination) details.push(`🎯 目的地：${escapeHtml(r.destination)}`);
+    if (r.additional_passengers && r.additional_passengers.length > 0) {
+      details.push(`👥 隨行乘客：${r.additional_passengers.map(escapeHtml).join('、')}`);
+    }
     if (r.notes) details.push(`📝 備註：${escapeHtml(r.notes)}`);
 
     el.innerHTML = `
@@ -642,8 +701,25 @@ function renderPassengerBoard() {
   el.innerHTML = `
     <div class="section-title">申請共乘 Request a ride</div>
     <div class="field">
+      <label>您的姓名 Your name</label>
+      <input type="text" id="ride-name" value="${escapeHtml(lineProfile.displayName || '')}">
+    </div>
+    <div class="field">
+      <label>聯絡電話 Phone</label>
+      <input type="text" id="ride-phone" placeholder="例：0912-345-678">
+    </div>
+    <div class="field">
       <label>需搭車地點 Pickup area <span class="hint">選填</span></label>
       <input type="text" id="ride-pickup-area" placeholder="例：台北車站附近">
+    </div>
+    <div class="field">
+      <label>目的地 Destination</label>
+      <input type="text" id="ride-destination" placeholder="例：長聖佛宮">
+    </div>
+    <div class="field">
+      <label>隨行乘客 Additional passengers <span class="hint">選填，只需填寫姓名</span></label>
+      <div id="additional-passenger-list"></div>
+      <button type="button" class="add-btn" id="add-passenger-btn" style="margin-bottom:0;">＋ 新增隨行乘客 Add passenger</button>
     </div>
     <div class="field">
       <label>備註 Notes <span class="hint">選填</span></label>
@@ -652,15 +728,32 @@ function renderPassengerBoard() {
     <p class="modal-error" id="ride-error"></p>
     <button type="button" class="submit-btn" id="ride-submit-btn" style="width:100%;">送出申請 Submit</button>`;
 
+  document.getElementById('add-passenger-btn').addEventListener('click', () => addAdditionalPassengerRow());
+
   document.getElementById('ride-submit-btn').addEventListener('click', async () => {
     const errEl = document.getElementById('ride-error');
     errEl.style.display = 'none';
+
+    const name = document.getElementById('ride-name').value.trim();
+    const phone = document.getElementById('ride-phone').value.trim();
+    const destination = document.getElementById('ride-destination').value.trim();
+    if (!name || !phone) { errEl.textContent = '請填寫姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+    if (!destination) { errEl.textContent = '請填寫目的地。'; errEl.style.display = 'block'; return; }
+
+    const additionalPassengers = Array.from(document.querySelectorAll('.additional-passenger-input'))
+      .map(input => input.value.trim())
+      .filter(v => v.length > 0);
+
     const btn = document.getElementById('ride-submit-btn');
     btn.disabled = true;
     try {
       await callApi('create_ride_request', {
         event_id: currentEvent.id,
+        passenger_name: name,
+        passenger_phone: phone,
         pickup_area: document.getElementById('ride-pickup-area').value.trim() || null,
+        destination,
+        additional_passengers: additionalPassengers,
         notes: document.getElementById('ride-notes').value.trim() || null,
       });
       await loadPassengerBoard();
@@ -670,6 +763,17 @@ function renderPassengerBoard() {
       btn.disabled = false;
     }
   });
+}
+
+function addAdditionalPassengerRow() {
+  const listEl = document.getElementById('additional-passenger-list');
+  const row = document.createElement('div');
+  row.className = 'additional-passenger-row';
+  row.innerHTML = `
+    <input type="text" class="additional-passenger-input" placeholder="姓名 Name">
+    <button type="button" class="remove-passenger-btn">✕</button>`;
+  row.querySelector('.remove-passenger-btn').addEventListener('click', () => row.remove());
+  listEl.appendChild(row);
 }
 
 /* ================= CAR MANAGER ================= */
@@ -712,25 +816,33 @@ function renderManagerTrips() {
   }
 
   listEl.innerHTML = managerTrips.map(t => {
-    const full = t.passengers.length >= t.seats_total;
+    const usedSeats = t.passengers.reduce((sum, p) => sum + (p.passenger_count || 1), 0);
+    const full = usedSeats >= t.seats_total;
     const meta = [t.available_date, t.available_time, t.departure_point].filter(Boolean).join('　');
     const carInfo = [t.car_brand, t.car_color, t.car_plate].filter(Boolean).join('・');
-    const passengerRows = t.passengers.map(p => `
+    const passengerRows = t.passengers.map(p => {
+      const names = [p.name].concat(p.additional_passengers || []).join('、');
+      return `
       <div class="passenger-row">
-        <span>👤 ${escapeHtml(p.name)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}</span>
+        <span>👤 ${escapeHtml(names)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}${p.destination ? '　🎯' + escapeHtml(p.destination) : ''}</span>
         <button type="button" class="btn-text" data-unassign="${p.request_id}">取消配對</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
+    const idleBtn = t.trip_status === 'arrived_destination'
+      ? `<button type="button" class="btn-text primary" data-idle="${t.id}">標記為待命中 Mark idle</button>`
+      : '';
 
     return `
       <div class="trip-card" data-trip-id="${t.id}">
         <div class="trip-card-top">
-          <span class="trip-card-name">${escapeHtml(t.driver_name)}</span>
-          <span class="seats-badge ${full ? 'full' : ''}">${t.passengers.length} / ${t.seats_total} 位</span>
+          <span class="trip-card-name">${escapeHtml(t.driver_name)}${t.driver_phone ? '　' + escapeHtml(t.driver_phone) : ''}</span>
+          <span class="seats-badge ${full ? 'full' : ''}">${usedSeats} / ${t.seats_total} 位</span>
         </div>
         <div class="trip-card-meta">${escapeHtml(meta)}${carInfo ? '　🚘 ' + escapeHtml(carInfo) : ''}</div>
-        <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status]}</span>
+        <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status] || t.trip_status}</span>
         ${passengerRows}
         <div class="trip-card-actions">
+          ${idleBtn}
           <button type="button" class="btn-text danger" data-delete-trip="${t.id}">刪除此共乘</button>
         </div>
       </div>`;
@@ -744,6 +856,19 @@ function renderManagerTrips() {
         await loadManagerBoard();
       } catch (err) {
         alert('取消配對失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-idle]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await callApi('mark_trip_idle', { id: btn.dataset.idle });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
         btn.disabled = false;
       }
     });
@@ -772,18 +897,21 @@ function renderManagerRequests() {
     return;
   }
 
-  const assignedCountFor = (tripId) => managerTrips.find(t => t.id === tripId)?.passengers?.length || 0;
-  const tripOptions = managerTrips
-    .filter(t => t.passengers.length < t.seats_total)
-    .map(t => `<option value="${t.id}">${escapeHtml(t.driver_name)}（尚有 ${t.seats_total - assignedCountFor(t.id)} 位）</option>`)
-    .join('');
+  const usedSeatsFor = (tripId) => (managerTrips.find(t => t.id === tripId)?.passengers || []).reduce((sum, p) => sum + (p.passenger_count || 1), 0);
 
-  listEl.innerHTML = pending.map(r => `
+  listEl.innerHTML = pending.map(r => {
+    const names = [r.name].concat(r.additional_passengers || []).join('、');
+    const tripOptions = managerTrips
+      .filter(t => usedSeatsFor(t.id) + (r.passenger_count || 1) <= t.seats_total)
+      .map(t => `<option value="${t.id}">${escapeHtml(t.driver_name)}（尚有 ${t.seats_total - usedSeatsFor(t.id)} 位）</option>`)
+      .join('');
+
+    return `
     <div class="trip-card" data-request-id="${r.id}">
       <div class="trip-card-top">
-        <span class="trip-card-name">${escapeHtml(r.name)}</span>
+        <span class="trip-card-name">${escapeHtml(names)}</span>
       </div>
-      <div class="trip-card-meta">${escapeHtml(r.phone || '')}${r.pickup_area ? '　📍' + escapeHtml(r.pickup_area) : ''}</div>
+      <div class="trip-card-meta">${escapeHtml(r.phone || '')}${r.pickup_area ? '　📍' + escapeHtml(r.pickup_area) : ''}${r.destination ? '　🎯' + escapeHtml(r.destination) : ''}</div>
       <div class="trip-card-actions">
         <select class="request-select" data-assign="${r.id}">
           <option value="">指派給司機…</option>
@@ -791,8 +919,8 @@ function renderManagerRequests() {
         </select>
         <button type="button" class="btn-text danger" data-delete-request="${r.id}">刪除</button>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   listEl.querySelectorAll('[data-assign]').forEach(sel => {
     sel.addEventListener('change', async () => {
