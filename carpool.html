@@ -469,6 +469,7 @@ function enterBoard(role, ev) {
 
 let driverProfile = null;
 let myTrips = [];
+let editingLocationTripId = null;
 
 async function loadDriverBoard() {
   const el = document.getElementById('driver-content');
@@ -497,19 +498,23 @@ function renderDriverBoard() {
     <div id="my-trips-list"></div>
     <button type="button" class="add-btn" id="add-trip-btn">＋ 新增可載送時段 Add availability</button>
     <div id="trip-form" style="display:none;">
+      <div class="field">
+        <label>日期 Date</label>
+        <input type="date" id="trip-date">
+      </div>
       <div class="field-row">
         <div class="field">
-          <label>日期 Date</label>
-          <input type="date" id="trip-date">
+          <label>開始時間 Start time</label>
+          <input type="time" id="trip-time" step="300">
         </div>
         <div class="field">
-          <label>時間 Time</label>
-          <input type="time" id="trip-time">
+          <label>結束時間 End time</label>
+          <input type="time" id="trip-time-end" step="300">
         </div>
       </div>
       <div class="field">
-        <label>接送地點 Pickup point</label>
-        <input type="text" id="trip-point" placeholder="例：台北車站">
+        <label>等待派送點 Waiting location</label>
+        <input type="text" id="trip-point" placeholder="例：台北車站（請填寫目前實際等待的位置）">
       </div>
       <div class="field">
         <label>座位數 Seats available</label>
@@ -551,7 +556,8 @@ function renderMyTrips() {
   listEl.innerHTML = myTrips.map(t => {
     const usedSeats = t.passengers.reduce((sum, p) => sum + (p.passenger_count || 1), 0);
     const full = usedSeats >= t.seats_total;
-    const meta = [t.available_date, t.available_time, t.departure_point].filter(Boolean).join('　');
+    const timeRange = [t.available_time, t.available_time_end].filter(Boolean).join(' - ');
+    const meta = [t.available_date, timeRange].filter(Boolean).join('　');
     const passengerRows = t.passengers.length
       ? t.passengers.map(p => {
           const names = [p.name].concat(p.additional_passengers || []).join('、');
@@ -566,12 +572,24 @@ function renderMyTrips() {
       ? `<button type="button" class="btn-text primary" data-advance="${t.id}" data-next="${next.next}">${next.label}</button>`
       : '';
 
+    const locationHTML = editingLocationTripId === t.id
+      ? `<div class="field" style="margin:6px 0;">
+          <label>等待派送點 Waiting location <span class="hint">請確實回報，以利管理員派車</span></label>
+          <input type="text" id="location-input-${t.id}" value="${escapeHtml(t.departure_point || '')}">
+          <div class="form-actions" style="margin-top:6px;">
+            <button type="button" class="btn-cancel" data-cancel-location="${t.id}">取消</button>
+            <button type="button" class="submit-btn" data-save-location="${t.id}">儲存位置</button>
+          </div>
+        </div>`
+      : `<div class="trip-card-meta">📍 等待派送點：${escapeHtml(t.departure_point || '—')}　<button type="button" class="edit-link" data-edit-location="${t.id}">更新位置</button></div>`;
+
     return `
       <div class="trip-card" data-trip-id="${t.id}">
         <div class="trip-card-top">
           <span class="trip-card-name">🚗 ${escapeHtml(meta)}</span>
           <span class="seats-badge ${full ? 'full' : ''}">${usedSeats} / ${t.seats_total} 位</span>
         </div>
+        ${locationHTML}
         ${t.notes ? `<div class="trip-card-meta">📝 ${escapeHtml(t.notes)}</div>` : ''}
         <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status]}</span>
         ${passengerRows}
@@ -608,6 +626,38 @@ function renderMyTrips() {
       }
     });
   });
+
+  listEl.querySelectorAll('[data-edit-location]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingLocationTripId = btn.dataset.editLocation;
+      renderMyTrips();
+    });
+  });
+
+  listEl.querySelectorAll('[data-cancel-location]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingLocationTripId = null;
+      renderMyTrips();
+    });
+  });
+
+  listEl.querySelectorAll('[data-save-location]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const tripId = btn.dataset.saveLocation;
+      const input = document.getElementById(`location-input-${tripId}`);
+      const point = input.value.trim();
+      if (!point) { input.focus(); return; }
+      btn.disabled = true;
+      try {
+        await callApi('update_trip_location', { trip_id: tripId, departure_point: point });
+        editingLocationTripId = null;
+        await loadDriverBoard();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 async function submitTrip() {
@@ -615,8 +665,11 @@ async function submitTrip() {
   errEl.style.display = 'none';
   const point = document.getElementById('trip-point').value.trim();
   const seats = document.getElementById('trip-seats').value.trim();
-  if (!point) { errEl.textContent = '請填寫接送地點。'; errEl.style.display = 'block'; return; }
+  const timeStart = document.getElementById('trip-time').value;
+  const timeEnd = document.getElementById('trip-time-end').value;
+  if (!point) { errEl.textContent = '請填寫等待派送點。'; errEl.style.display = 'block'; return; }
   if (!seats || parseInt(seats, 10) < 1) { errEl.textContent = '請填寫有效的座位數。'; errEl.style.display = 'block'; return; }
+  if (timeStart && timeEnd && timeEnd <= timeStart) { errEl.textContent = '結束時間必須晚於開始時間。'; errEl.style.display = 'block'; return; }
 
   const btn = document.getElementById('trip-save-btn');
   btn.disabled = true;
@@ -624,7 +677,8 @@ async function submitTrip() {
     await callApi('create_trip', {
       event_id: currentEvent.id,
       available_date: document.getElementById('trip-date').value || null,
-      available_time: document.getElementById('trip-time').value || null,
+      available_time: timeStart || null,
+      available_time_end: timeEnd || null,
       departure_point: point,
       seats_total: parseInt(seats, 10),
       notes: document.getElementById('trip-notes').value.trim() || null,
@@ -666,8 +720,9 @@ function renderPassengerBoard() {
     if (isAssigned) {
       details.push(`🚗 司機：${escapeHtml(r.trip.driver_name)}${r.trip.driver_phone ? '　' + escapeHtml(r.trip.driver_phone) : ''}`);
       if (r.trip.car_brand) details.push(`🚘 車輛：${escapeHtml(r.trip.car_brand)}${r.trip.car_color ? '・' + escapeHtml(r.trip.car_color) : ''}${r.trip.car_plate ? '　' + escapeHtml(r.trip.car_plate) : ''}`);
-      if (r.trip.available_date || r.trip.available_time) details.push(`🕒 時間：${escapeHtml([r.trip.available_date, r.trip.available_time].filter(Boolean).join(' '))}`);
-      if (r.trip.departure_point) details.push(`📍 接送地點：${escapeHtml(r.trip.departure_point)}`);
+      const timeRange = [r.trip.available_time, r.trip.available_time_end].filter(Boolean).join(' - ');
+      if (r.trip.available_date || timeRange) details.push(`🕒 時間：${escapeHtml([r.trip.available_date, timeRange].filter(Boolean).join(' '))}`);
+      if (r.trip.departure_point) details.push(`📍 等待派送點：${escapeHtml(r.trip.departure_point)}`);
       details.push(`目前狀態：${STATUS_LABELS[r.trip.trip_status] || r.trip.trip_status}`);
     } else {
       details.push('主辦單位確認司機配對後，將會顯示於此。');
@@ -835,7 +890,8 @@ function renderManagerTrips() {
   listEl.innerHTML = managerTrips.map(t => {
     const usedSeats = t.passengers.reduce((sum, p) => sum + (p.passenger_count || 1), 0);
     const full = usedSeats >= t.seats_total;
-    const meta = [t.available_date, t.available_time, t.departure_point].filter(Boolean).join('　');
+    const timeRange = [t.available_time, t.available_time_end].filter(Boolean).join(' - ');
+    const meta = [t.available_date, timeRange].filter(Boolean).join('　');
     const carInfo = [t.car_brand, t.car_color, t.car_plate].filter(Boolean).join('・');
     const passengerRows = t.passengers.map(p => {
       const names = [p.name].concat(p.additional_passengers || []).join('、');
@@ -856,6 +912,7 @@ function renderManagerTrips() {
           <span class="seats-badge ${full ? 'full' : ''}">${usedSeats} / ${t.seats_total} 位</span>
         </div>
         <div class="trip-card-meta">${escapeHtml(meta)}${carInfo ? '　🚘 ' + escapeHtml(carInfo) : ''}</div>
+        <div class="trip-card-meta">📍 等待派送點：${escapeHtml(t.departure_point || '—')}</div>
         <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status] || t.trip_status}</span>
         ${passengerRows}
         <div class="trip-card-actions">
@@ -920,7 +977,7 @@ function renderManagerRequests() {
     const names = [r.name].concat(r.additional_passengers || []).join('、');
     const tripOptions = managerTrips
       .filter(t => usedSeatsFor(t.id) + (r.passenger_count || 1) <= t.seats_total)
-      .map(t => `<option value="${t.id}">${escapeHtml(t.driver_name)}（尚有 ${t.seats_total - usedSeatsFor(t.id)} 位）</option>`)
+      .map(t => `<option value="${t.id}">${escapeHtml(t.driver_name)}・${escapeHtml(t.departure_point || '—')}（尚有 ${t.seats_total - usedSeatsFor(t.id)} 位）</option>`)
       .join('');
 
     return `

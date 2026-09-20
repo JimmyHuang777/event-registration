@@ -36,6 +36,11 @@
 //   update_trip_status   — advance a trip the caller owns one step:
 //                           not_started -> heading_to_pickup ->
 //                           arrived -> delivered.
+//   update_trip_location — driver updates where their car is
+//                           currently waiting ("等待派送點"),
+//                           independent of trip status, so the Car
+//                           Manager always sees an up-to-date
+//                           location to assign rides efficiently.
 //   get_my_ride_request  — the caller's own active ride request for
 //                           one event, with the assigned trip/driver
 //                           info if matched.
@@ -266,7 +271,7 @@ serve(async (req) => {
 
         const { data: trips, error } = await supabase
           .from("car_trips")
-          .select("id, available_date, available_time, departure_point, seats_total, notes, trip_status, created_at")
+          .select("id, available_date, available_time, available_time_end, departure_point, seats_total, notes, trip_status, created_at")
           .eq("event_id", event_id)
           .eq("driver_user_id", existingUser.id)
           .order("created_at", { ascending: true });
@@ -306,9 +311,9 @@ serve(async (req) => {
           .maybeSingle();
         if (!profile) return json({ error: "請先登記車輛資訊，才能提供共乘。" }, 400);
 
-        const { event_id, available_date, available_time, departure_point, seats_total, notes } = body;
+        const { event_id, available_date, available_time, available_time_end, departure_point, seats_total, notes } = body;
         if (!event_id) return json({ error: "Missing event_id." }, 400);
-        if (!departure_point || !String(departure_point).trim()) return json({ error: "請填寫出發／接送地點。" }, 400);
+        if (!departure_point || !String(departure_point).trim()) return json({ error: "請填寫等待派送點。" }, 400);
         const seats = parseInt(seats_total, 10);
         if (!seats || seats < 1) return json({ error: "請填寫有效的座位數。" }, 400);
 
@@ -319,6 +324,7 @@ serve(async (req) => {
             driver_user_id: existingUser.id,
             available_date: (available_date || "").trim() || null,
             available_time: (available_time || "").trim() || null,
+            available_time_end: (available_time_end || "").trim() || null,
             departure_point: String(departure_point).trim(),
             seats_total: seats,
             notes: (notes || "").trim() || null,
@@ -375,6 +381,32 @@ serve(async (req) => {
         return json({ trip: data });
       }
 
+      // ---- Driver updates where their car is currently waiting
+      // (the "等待派送點"), independently of the trip status. The
+      // driver's location can change while they wait for a dispatch,
+      // so they should keep this current — it's what the Car Manager
+      // uses to assign rides efficiently. ----
+      case "update_trip_location": {
+        const { trip_id, departure_point } = body;
+        if (!trip_id) return json({ error: "Missing trip_id." }, 400);
+        const point = String(departure_point || "").trim();
+        if (!point) return json({ error: "請填寫等待派送點。" }, 400);
+
+        const { data: trip } = await supabase.from("car_trips").select("id, driver_user_id").eq("id", trip_id).maybeSingle();
+        if (!trip || trip.driver_user_id !== existingUser.id) {
+          return json({ error: "您只能更新自己提供的共乘位置。" }, 403);
+        }
+
+        const { data, error } = await supabase
+          .from("car_trips")
+          .update({ departure_point: point })
+          .eq("id", trip_id)
+          .select()
+          .single();
+        if (error) return json({ error: error.message }, 400);
+        return json({ trip: data });
+      }
+
       // ---- The caller's own active ride request for one event ----
       case "get_my_ride_request": {
         const { event_id } = body;
@@ -383,7 +415,7 @@ serve(async (req) => {
         const { data: reqRow } = await supabase
           .from("ride_requests")
           .select(
-            "id, status, pickup_area, destination, additional_passengers, notes, trip_id, car_trips ( driver_user_id, available_date, available_time, departure_point, trip_status )"
+            "id, status, pickup_area, destination, additional_passengers, notes, trip_id, car_trips ( driver_user_id, available_date, available_time, available_time_end, departure_point, trip_status )"
           )
           .eq("event_id", event_id)
           .eq("user_id", existingUser.id)
@@ -415,6 +447,7 @@ serve(async (req) => {
               ? {
                   available_date: trip.available_date,
                   available_time: trip.available_time,
+                  available_time_end: trip.available_time_end,
                   departure_point: trip.departure_point,
                   trip_status: trip.trip_status,
                   driver_name: driverProfile?.contact_name || "—",
@@ -546,7 +579,7 @@ serve(async (req) => {
 
         const { data: trips, error } = await supabase
           .from("car_trips")
-          .select("id, driver_user_id, available_date, available_time, departure_point, seats_total, notes, trip_status, created_at")
+          .select("id, driver_user_id, available_date, available_time, available_time_end, departure_point, seats_total, notes, trip_status, created_at")
           .eq("event_id", event_id)
           .order("created_at", { ascending: true });
         if (error) return json({ error: error.message }, 400);
@@ -595,6 +628,7 @@ serve(async (req) => {
             car_plate: profile?.car_plate || "",
             available_date: t.available_date,
             available_time: t.available_time,
+            available_time_end: t.available_time_end,
             departure_point: t.departure_point,
             seats_total: t.seats_total,
             notes: t.notes,
