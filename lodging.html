@@ -157,7 +157,7 @@
     <div class="header">
       <button type="button" class="back-btn" id="host-profile-back-btn">‹</button>
       <div class="titles">
-        <h1>🏠 房東資料 Host info</h1>
+        <h1>🏠 房務管理人資料</h1>
         <p id="host-profile-subtitle">請先登記您的聯絡方式與房源資訊</p>
       </div>
     </div>
@@ -285,11 +285,11 @@ function renderRoleList() {
   listEl.innerHTML = '';
 
   const roles = [
-    { key: 'host', title: '🏠 我是房東 I am a host', desc: '登記房源資訊，提供住宿名額', color: '#B4530F' },
+    { key: 'host', title: '🏠 登陸公堂房務資料', desc: '登記房源資訊，提供住宿名額', color: '#B4530F' },
     { key: 'guest', title: '🙋 我是房客 I am a guest', desc: '申請住宿名額', color: '#6B5FB4' },
   ];
   if (whoami.is_lodging_manager) {
-    roles.push({ key: 'manager', title: '🗂️ 我是住宿管理員 I am a Lodging Manager', desc: '配對房東與房客的住宿需求', color: '#F79009' });
+    roles.push({ key: 'manager', title: '🗂️ 公堂房務管理', desc: '配對房東與房客的住宿需求', color: '#F79009' });
   }
 
   roles.forEach(r => {
