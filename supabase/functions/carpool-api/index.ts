@@ -41,6 +41,12 @@
 //                           info if matched.
 //   create_ride_request  — request a ride for one event.
 //   cancel_ride_request  — cancel the caller's own ride request.
+//   complete_ride_request — passenger confirms drop-off ("感謝天恩
+//                           師德") once the trip is "已抵達目的地",
+//                           closing this one-time ride and (once
+//                           every passenger on the trip has done the
+//                           same) freeing the driver back to idle,
+//                           with no Car Manager step required.
 //
 // Actions (Car Manager only — gated by car_manager_admins):
 //   list_trips_for_event    — every trip for one event, with full
@@ -381,7 +387,7 @@ serve(async (req) => {
           )
           .eq("event_id", event_id)
           .eq("user_id", existingUser.id)
-          .neq("status", "cancelled")
+          .in("status", ["pending", "assigned"])
           .maybeSingle();
 
         if (!reqRow) return json({ request: null });
@@ -475,6 +481,59 @@ serve(async (req) => {
           .eq("id", request_id);
         if (error) return json({ error: error.message }, 400);
         return json({ success: true });
+      }
+
+      // ---- Passenger confirms drop-off ("感謝天恩師德"), closing
+      // this one-time ride. Only allowed once the driver has marked
+      // the trip "已抵達目的地". Marks the request completed and,
+      // once no other passenger on the same trip is still assigned,
+      // frees the driver by setting the trip back to idle — no Car
+      // Manager involvement needed for this normal completion path.
+      case "complete_ride_request": {
+        const { request_id } = body;
+        if (!request_id) return json({ error: "Missing request_id." }, 400);
+
+        const { data: reqRow } = await supabase
+          .from("ride_requests")
+          .select("id, user_id, status, trip_id")
+          .eq("id", request_id)
+          .maybeSingle();
+        if (!reqRow || reqRow.user_id !== existingUser.id) {
+          return json({ error: "您只能確認自己的共乘需求。" }, 403);
+        }
+        if (reqRow.status !== "assigned" || !reqRow.trip_id) {
+          return json({ error: "此共乘尚未配對司機。" }, 400);
+        }
+
+        const { data: trip } = await supabase
+          .from("car_trips")
+          .select("id, trip_status")
+          .eq("id", reqRow.trip_id)
+          .maybeSingle();
+        if (!trip || trip.trip_status !== "arrived_destination") {
+          return json({ error: "司機尚未標記「已抵達目的地」，請稍候再確認。" }, 400);
+        }
+
+        const { data, error } = await supabase
+          .from("ride_requests")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("id", request_id)
+          .select()
+          .single();
+        if (error) return json({ error: error.message }, 400);
+
+        // If no other passenger on this trip is still assigned, the
+        // driver is free again — set the trip back to idle.
+        const { count } = await supabase
+          .from("ride_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("trip_id", reqRow.trip_id)
+          .eq("status", "assigned");
+        if (!count) {
+          await supabase.from("car_trips").update({ trip_status: "idle" }).eq("id", reqRow.trip_id);
+        }
+
+        return json({ request: data });
       }
 
       // =========================================================

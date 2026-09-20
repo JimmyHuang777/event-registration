@@ -679,12 +679,29 @@ function renderPassengerBoard() {
     }
     if (r.notes) details.push(`📝 備註：${escapeHtml(r.notes)}`);
 
+    const showCompleteBtn = isAssigned && r.trip.trip_status === 'arrived_destination';
+
     el.innerHTML = `
       <div class="${cardClass}">
         <div class="title">${title}</div>
         <div class="details">${details.join('<br>')}</div>
       </div>
+      ${showCompleteBtn ? '<button type="button" class="submit-btn" id="complete-ride-btn" style="width:100%;">🙏 感謝天恩師德</button>' : ''}
       <button type="button" class="btn-text danger" id="cancel-ride-btn">取消共乘申請</button>`;
+
+    if (showCompleteBtn) {
+      document.getElementById('complete-ride-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('complete-ride-btn');
+        btn.disabled = true;
+        try {
+          await callApi('complete_ride_request', { request_id: r.id });
+          await loadPassengerBoard();
+        } catch (err) {
+          alert('確認失敗：' + err.message);
+          btn.disabled = false;
+        }
+      });
+    }
 
     document.getElementById('cancel-ride-btn').addEventListener('click', async () => {
       if (!confirm('確定要取消共乘申請嗎？')) return;
