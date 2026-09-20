@@ -12,6 +12,7 @@ on:
       - 'supabase/functions/flow-admin-api/**'
       - 'supabase/functions/home-api/**'
       - 'supabase/functions/events-admin-api/**'
+      - 'supabase/functions/carpool-api/**'
 
 jobs:
   deploy:
@@ -65,5 +66,10 @@ jobs:
 
       - name: Deploy events-admin-api Edge Function
         run: supabase functions deploy events-admin-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy carpool-api Edge Function
+        run: supabase functions deploy carpool-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

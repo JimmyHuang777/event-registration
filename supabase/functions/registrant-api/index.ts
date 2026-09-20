@@ -13,6 +13,10 @@
 // but all rows stay linked to the submitter's user_id, so ownership
 // checks (edit/cancel your own submissions) still hold.
 //
+// Carpool (共乘) has moved to its own dedicated carpool-api Edge
+// Function + carpool.html LIFF page — this function no longer
+// handles it.
+//
 // DEPLOY:
 //   supabase functions deploy registrant-api
 //

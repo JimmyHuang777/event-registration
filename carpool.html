@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>共乘 Carpool</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --line-green-dark: #05A648;
+    --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB;
+    --error: #E0483E; --error-bg: #FBEAE8;
+    --blue: #2563A8; --blue-bg: #E9F1FA;
+    --amber: #92650A; --amber-bg: #FFF3D6;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; background: var(--paper); }
+
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+    font-family: inherit;
+  }
+  .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+
+  .board-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 18px 20px 14px; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .header .back-btn { background: none; border: none; font-size: 20px; color: var(--ink-soft); cursor: pointer; padding: 4px 6px 4px 0; font-family: inherit; }
+  .header .titles h1 { font-size: 17px; margin: 0; }
+  .header .titles p { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .content { padding: 4px 20px 32px; flex: 1; overflow-y: auto; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+    text-decoration: none; color: inherit; cursor: pointer; width: 100%; text-align: left; font-family: inherit;
+  }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; color: white;
+  }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13px; padding: 20px 10px; }
+
+  .section-title { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
+  .section-title:first-child { margin-top: 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"], .field input[type="time"], .field textarea {
+    width: 100%; padding: 11px 12px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 14.5px; font-family: inherit; background: var(--paper);
+  }
+  .field textarea { min-height: 60px; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--line-green); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin: 6px 0 0; display: none; }
+
+  .car-profile-card { background: var(--canvas); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.7; }
+  .car-profile-card .edit-link { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0; margin-top: 6px; font-family: inherit; }
+
+  .trip-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .trip-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .trip-card-name { font-size: 15px; font-weight: 700; }
+  .trip-card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
+  .seats-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; background: var(--blue-bg); color: var(--blue); }
+  .seats-badge.full { background: var(--error-bg); color: var(--error); }
+  .trip-status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; display: inline-block; margin-top: 8px; }
+  .trip-status-badge.not_started { background: var(--canvas); color: var(--ink-soft); }
+  .trip-status-badge.heading_to_pickup { background: var(--amber-bg); color: var(--amber); }
+  .trip-status-badge.arrived { background: var(--blue-bg); color: var(--blue); }
+  .trip-status-badge.delivered { background: #E4F8EC; color: var(--line-green-dark); }
+  .passenger-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 8px; }
+  .trip-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .btn-text { background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 10px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+  .btn-text.primary { background: var(--line-green); color: white; border-color: var(--line-green); }
+
+  .ride-status-card { border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; background: var(--amber-bg); }
+  .ride-status-card.assigned { background: #E4F8EC; }
+  .ride-status-card .title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .ride-status-card .details { font-size: 12.5px; color: var(--ink-soft); line-height: 1.6; }
+
+  .request-select { font-size: 12.5px; padding: 6px 8px; border-radius: 8px; border: 1.5px solid var(--line); font-family: inherit; max-width: 140px; }
+
+  .add-btn { width: 100%; padding: 12px; background: none; border: 1.5px dashed var(--line); border-radius: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
+  .add-btn:hover { border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .form-actions { display: flex; gap: 10px; margin-top: 6px; margin-bottom: 20px; }
+  .form-actions .submit-btn { flex: 1; margin: 0; }
+  .form-actions .btn-cancel { flex-shrink: 0; padding: 12px 16px; background: var(--canvas); border: none; border-radius: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="role-screen" class="board-screen">
+    <div class="header">
+      <div class="titles">
+        <h1>🚗 共乘 Carpool</h1>
+        <p>請選擇您要使用的身份</p>
+      </div>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="menu-list" id="role-list"></div>
+  </div>
+
+  <div id="event-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="event-back-btn">‹</button>
+      <div class="titles">
+        <h1 id="event-screen-title">請選擇活動</h1>
+        <p>選擇要辦理共乘的活動</p>
+      </div>
+    </div>
+    <div class="menu-list" id="event-list"></div>
+  </div>
+
+  <div id="driver-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="driver-back-btn">‹</button>
+      <div class="titles">
+        <h1>🚗 我是司機 Driver</h1>
+        <p id="driver-event-name"></p>
+      </div>
+    </div>
+    <div class="content" id="driver-content"></div>
+  </div>
+
+  <div id="passenger-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="passenger-back-btn">‹</button>
+      <div class="titles">
+        <h1>🙋 我是乘客 Passenger</h1>
+        <p id="passenger-event-name"></p>
+      </div>
+    </div>
+    <div class="content" id="passenger-content"></div>
+  </div>
+
+  <div id="manager-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="manager-back-btn">‹</button>
+      <div class="titles">
+        <h1>🗂️ 共乘管理員 Car Manager</h1>
+        <p id="manager-event-name"></p>
+      </div>
+    </div>
+    <div class="content" id="manager-content"></div>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/carpool-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+let whoami = null;
+let currentEvent = null;
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen, .board-screen').forEach(el => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
+  const el = document.getElementById(name + '-screen');
+  if (el.classList.contains('state-screen')) {
+    el.classList.add('active');
+    el.style.display = 'flex';
+  } else {
+    el.style.display = 'flex';
+  }
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms)),
+  ]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+const STATUS_LABELS = {
+  not_started: '尚未出發', heading_to_pickup: '前往接送地中', arrived: '已抵達接送地', delivered: '已送達',
+};
+const STATUS_NEXT = {
+  not_started: { next: 'heading_to_pickup', label: '出發前往接送地' },
+  heading_to_pickup: { next: 'arrived', label: '已抵達' },
+  arrived: { next: 'delivered', label: '已送達' },
+};
+
+/* ---------- Role picker ---------- */
+
+function renderRoleList() {
+  const listEl = document.getElementById('role-list');
+  listEl.innerHTML = '';
+
+  const roles = [
+    { key: 'driver', title: '🚗 我是司機 I am a driver', desc: '登記車輛資訊，提供共乘座位', color: '#2E90FA' },
+    { key: 'passenger', title: '🙋 我是乘客 I am a passenger', desc: '申請共乘座位', color: '#6B5FB4' },
+  ];
+  if (whoami.is_car_manager) {
+    roles.push({ key: 'manager', title: '🗂️ 我是共乘管理員 I am a Car Manager', desc: '配對司機與乘客的共乘需求', color: '#F79009' });
+  }
+
+  roles.forEach(r => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'menu-card';
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${r.color};">${r.title.split(' ')[0]}</div>
+      <div class="menu-body">
+        <div class="title">${r.title.slice(r.title.indexOf(' ') + 1)}</div>
+        <div class="desc">${r.desc}</div>
+      </div>
+      <div class="menu-arrow">›</div>
+    `;
+    card.addEventListener('click', () => openEventPicker(r.key));
+    listEl.appendChild(card);
+  });
+}
+
+/* ---------- Event picker ---------- */
+
+let pendingRole = null;
+
+async function openEventPicker(role) {
+  pendingRole = role;
+  const titleText = { driver: '請選擇活動（司機）', passenger: '請選擇活動（乘客）', manager: '請選擇活動（管理員）' }[role];
+  document.getElementById('event-screen-title').textContent = titleText;
+  showScreen('event');
+
+  const listEl = document.getElementById('event-list');
+  listEl.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { events } = await callApi('list_active_events');
+    if (!events || events.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">目前沒有進行中的活動。</div>';
+      return;
+    }
+    listEl.innerHTML = '';
+    events.forEach(ev => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'menu-card';
+      const meta = [ev.event_date, ev.location].filter(Boolean).join(' · ');
+      card.innerHTML = `
+        <div class="menu-icon" style="background:#06C755;">🎫</div>
+        <div class="menu-body">
+          <div class="title">${escapeHtml(ev.name)}</div>
+          <div class="desc">${escapeHtml(meta || '')}</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      `;
+      card.addEventListener('click', () => enterBoard(role, ev));
+      listEl.appendChild(card);
+    });
+  } catch (err) {
+    listEl.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+document.getElementById('event-back-btn').addEventListener('click', () => showScreen('role'));
+document.getElementById('driver-back-btn').addEventListener('click', () => showScreen('event'));
+document.getElementById('passenger-back-btn').addEventListener('click', () => showScreen('event'));
+document.getElementById('manager-back-btn').addEventListener('click', () => showScreen('event'));
+
+function enterBoard(role, ev) {
+  currentEvent = ev;
+  if (role === 'driver') {
+    document.getElementById('driver-event-name').textContent = ev.name;
+    showScreen('driver');
+    loadDriverBoard();
+  } else if (role === 'passenger') {
+    document.getElementById('passenger-event-name').textContent = ev.name;
+    showScreen('passenger');
+    loadPassengerBoard();
+  } else {
+    document.getElementById('manager-event-name').textContent = ev.name;
+    showScreen('manager');
+    loadManagerBoard();
+  }
+}
+
+/* ================= DRIVER ================= */
+
+let driverProfile = null;
+let myTrips = [];
+
+async function loadDriverBoard() {
+  const el = document.getElementById('driver-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const w = await callApi('whoami');
+    driverProfile = w.driver_profile;
+    const { trips } = await callApi('list_my_trips', { event_id: currentEvent.id });
+    myTrips = trips || [];
+    renderDriverBoard();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderDriverBoard() {
+  const el = document.getElementById('driver-content');
+
+  const profileHTML = driverProfile
+    ? `<div class="car-profile-card">
+        🚘 ${escapeHtml(driverProfile.car_brand)}${driverProfile.car_color ? '・' + escapeHtml(driverProfile.car_color) : ''}<br>
+        車牌 ${escapeHtml(driverProfile.car_plate)}
+        <div><button type="button" class="edit-link" id="edit-car-profile-btn">編輯車輛資訊 Edit</button></div>
+      </div>`
+    : '';
+
+  const profileFormHTML = `
+    <div id="car-profile-form" style="${driverProfile ? 'display:none;' : ''}">
+      <div class="section-title">登記車輛資訊 Register your car</div>
+      <div class="field">
+        <label>車輛廠牌 Car brand</label>
+        <input type="text" id="cp-brand" placeholder="例：Toyota Altis" value="${driverProfile ? escapeHtml(driverProfile.car_brand) : ''}">
+      </div>
+      <div class="field">
+        <label>顏色 Color <span class="hint">選填</span></label>
+        <input type="text" id="cp-color" placeholder="例：白色" value="${driverProfile ? escapeHtml(driverProfile.car_color || '') : ''}">
+      </div>
+      <div class="field">
+        <label>車牌號碼 Plate number</label>
+        <input type="text" id="cp-plate" placeholder="例：ABC-1234" value="${driverProfile ? escapeHtml(driverProfile.car_plate) : ''}">
+      </div>
+      <p class="modal-error" id="cp-error"></p>
+      <div class="form-actions">
+        ${driverProfile ? '<button type="button" class="btn-cancel" id="cp-cancel-btn">取消</button>' : ''}
+        <button type="button" class="submit-btn" id="cp-save-btn">儲存 Save</button>
+      </div>
+    </div>`;
+
+  const tripsHTML = driverProfile
+    ? `<div class="section-title">我提供的共乘 My trips for this event</div>
+       <div id="my-trips-list"></div>
+       <button type="button" class="add-btn" id="add-trip-btn">＋ 新增可載送時段 Add availability</button>
+       <div id="trip-form" style="display:none;">
+         <div class="field-row">
+           <div class="field">
+             <label>日期 Date</label>
+             <input type="date" id="trip-date">
+           </div>
+           <div class="field">
+             <label>時間 Time</label>
+             <input type="time" id="trip-time">
+           </div>
+         </div>
+         <div class="field">
+           <label>接送地點 Pickup point</label>
+           <input type="text" id="trip-point" placeholder="例：台北車站">
+         </div>
+         <div class="field">
+           <label>座位數 Seats available</label>
+           <input type="number" id="trip-seats" min="1" value="4">
+         </div>
+         <div class="field">
+           <label>備註 Notes <span class="hint">選填</span></label>
+           <textarea id="trip-notes"></textarea>
+         </div>
+         <p class="modal-error" id="trip-error"></p>
+         <div class="form-actions">
+           <button type="button" class="btn-cancel" id="trip-cancel-btn">取消</button>
+           <button type="button" class="submit-btn" id="trip-save-btn">送出 Submit</button>
+         </div>
+       </div>`
+    : '';
+
+  el.innerHTML = profileHTML + profileFormHTML + tripsHTML;
+
+  if (driverProfile) {
+    document.getElementById('edit-car-profile-btn').addEventListener('click', () => {
+      document.getElementById('car-profile-form').style.display = 'block';
+    });
+    document.getElementById('cp-cancel-btn')?.addEventListener('click', () => {
+      document.getElementById('car-profile-form').style.display = 'none';
+    });
+    renderMyTrips();
+    document.getElementById('add-trip-btn').addEventListener('click', () => {
+      document.getElementById('trip-form').style.display = 'block';
+      document.getElementById('add-trip-btn').style.display = 'none';
+    });
+    document.getElementById('trip-cancel-btn').addEventListener('click', () => {
+      document.getElementById('trip-form').style.display = 'none';
+      document.getElementById('add-trip-btn').style.display = 'block';
+    });
+    document.getElementById('trip-save-btn').addEventListener('click', submitTrip);
+  }
+
+  document.getElementById('cp-save-btn').addEventListener('click', saveDriverProfile);
+}
+
+async function saveDriverProfile() {
+  const errEl = document.getElementById('cp-error');
+  errEl.style.display = 'none';
+  const brand = document.getElementById('cp-brand').value.trim();
+  const color = document.getElementById('cp-color').value.trim();
+  const plate = document.getElementById('cp-plate').value.trim();
+  if (!brand || !plate) {
+    errEl.textContent = '請填寫車輛廠牌與車牌號碼。';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('cp-save-btn');
+  btn.disabled = true;
+  try {
+    const { driver_profile } = await callApi('save_driver_profile', { car_brand: brand, car_color: color, car_plate: plate });
+    driverProfile = driver_profile;
+    renderDriverBoard();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+function renderMyTrips() {
+  const listEl = document.getElementById('my-trips-list');
+  if (myTrips.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前尚未提供共乘時段。</div>';
+    return;
+  }
+
+  listEl.innerHTML = myTrips.map(t => {
+    const full = t.passengers.length >= t.seats_total;
+    const meta = [t.available_date, t.available_time, t.departure_point].filter(Boolean).join('　');
+    const passengerRows = t.passengers.length
+      ? t.passengers.map(p => `
+          <div class="passenger-row">
+            <span>👤 ${escapeHtml(p.name)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}</span>
+          </div>`).join('')
+      : '';
+    const next = STATUS_NEXT[t.trip_status];
+    const statusBtn = (t.passengers.length > 0 && next)
+      ? `<button type="button" class="btn-text primary" data-advance="${t.id}" data-next="${next.next}">${next.label}</button>`
+      : '';
+
+    return `
+      <div class="trip-card" data-trip-id="${t.id}">
+        <div class="trip-card-top">
+          <span class="trip-card-name">🚗 ${escapeHtml(meta)}</span>
+          <span class="seats-badge ${full ? 'full' : ''}">${t.passengers.length} / ${t.seats_total} 位</span>
+        </div>
+        ${t.notes ? `<div class="trip-card-meta">📝 ${escapeHtml(t.notes)}</div>` : ''}
+        <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status]}</span>
+        ${passengerRows}
+        <div class="trip-card-actions">
+          ${statusBtn}
+          <button type="button" class="btn-text danger" data-delete="${t.id}">刪除</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('[data-advance]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await callApi('update_trip_status', { trip_id: btn.dataset.advance, next_status: btn.dataset.next });
+        await loadDriverBoard();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定要刪除此共乘時段嗎？已配對的乘客將被移回待配對。')) return;
+      btn.disabled = true;
+      try {
+        await callApi('delete_trip', { trip_id: btn.dataset.delete });
+        await loadDriverBoard();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function submitTrip() {
+  const errEl = document.getElementById('trip-error');
+  errEl.style.display = 'none';
+  const point = document.getElementById('trip-point').value.trim();
+  const seats = document.getElementById('trip-seats').value.trim();
+  if (!point) { errEl.textContent = '請填寫接送地點。'; errEl.style.display = 'block'; return; }
+  if (!seats || parseInt(seats, 10) < 1) { errEl.textContent = '請填寫有效的座位數。'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('trip-save-btn');
+  btn.disabled = true;
+  try {
+    await callApi('create_trip', {
+      event_id: currentEvent.id,
+      available_date: document.getElementById('trip-date').value || null,
+      available_time: document.getElementById('trip-time').value || null,
+      departure_point: point,
+      seats_total: parseInt(seats, 10),
+      notes: document.getElementById('trip-notes').value.trim() || null,
+    });
+    await loadDriverBoard();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+/* ================= PASSENGER ================= */
+
+let myRideRequest = null;
+
+async function loadPassengerBoard() {
+  const el = document.getElementById('passenger-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { request } = await callApi('get_my_ride_request', { event_id: currentEvent.id });
+    myRideRequest = request;
+    renderPassengerBoard();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderPassengerBoard() {
+  const el = document.getElementById('passenger-content');
+
+  if (myRideRequest) {
+    const r = myRideRequest;
+    const isAssigned = r.status === 'assigned' && r.trip;
+    const cardClass = 'ride-status-card' + (isAssigned ? ' assigned' : '');
+    const title = isAssigned ? '✅ 已配對司機 Matched with a driver' : '⏳ 共乘申請處理中 Pending match';
+
+    const details = [];
+    if (isAssigned) {
+      details.push(`🚗 司機：${escapeHtml(r.trip.driver_name)}${r.trip.driver_phone ? '　' + escapeHtml(r.trip.driver_phone) : ''}`);
+      if (r.trip.car_brand) details.push(`🚘 車輛：${escapeHtml(r.trip.car_brand)}${r.trip.car_color ? '・' + escapeHtml(r.trip.car_color) : ''}${r.trip.car_plate ? '　' + escapeHtml(r.trip.car_plate) : ''}`);
+      if (r.trip.available_date || r.trip.available_time) details.push(`🕒 時間：${escapeHtml([r.trip.available_date, r.trip.available_time].filter(Boolean).join(' '))}`);
+      if (r.trip.departure_point) details.push(`📍 接送地點：${escapeHtml(r.trip.departure_point)}`);
+      details.push(`目前狀態：${STATUS_LABELS[r.trip.trip_status]}`);
+    } else {
+      details.push('主辦單位確認司機配對後，將會顯示於此。');
+    }
+    if (r.pickup_area) details.push(`📍 我的搭車地點：${escapeHtml(r.pickup_area)}`);
+    if (r.notes) details.push(`📝 備註：${escapeHtml(r.notes)}`);
+
+    el.innerHTML = `
+      <div class="${cardClass}">
+        <div class="title">${title}</div>
+        <div class="details">${details.join('<br>')}</div>
+      </div>
+      <button type="button" class="btn-text danger" id="cancel-ride-btn">取消共乘申請</button>`;
+
+    document.getElementById('cancel-ride-btn').addEventListener('click', async () => {
+      if (!confirm('確定要取消共乘申請嗎？')) return;
+      try {
+        await callApi('cancel_ride_request', { request_id: r.id });
+        await loadPassengerBoard();
+      } catch (err) {
+        alert('取消失敗：' + err.message);
+      }
+    });
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="section-title">申請共乘 Request a ride</div>
+    <div class="field">
+      <label>需搭車地點 Pickup area <span class="hint">選填</span></label>
+      <input type="text" id="ride-pickup-area" placeholder="例：台北車站附近">
+    </div>
+    <div class="field">
+      <label>備註 Notes <span class="hint">選填</span></label>
+      <textarea id="ride-notes"></textarea>
+    </div>
+    <p class="modal-error" id="ride-error"></p>
+    <button type="button" class="submit-btn" id="ride-submit-btn" style="width:100%;">送出申請 Submit</button>`;
+
+  document.getElementById('ride-submit-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('ride-error');
+    errEl.style.display = 'none';
+    const btn = document.getElementById('ride-submit-btn');
+    btn.disabled = true;
+    try {
+      await callApi('create_ride_request', {
+        event_id: currentEvent.id,
+        pickup_area: document.getElementById('ride-pickup-area').value.trim() || null,
+        notes: document.getElementById('ride-notes').value.trim() || null,
+      });
+      await loadPassengerBoard();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ================= CAR MANAGER ================= */
+
+let managerTrips = [];
+let managerRequests = [];
+
+async function loadManagerBoard() {
+  const el = document.getElementById('manager-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const [{ trips }, { requests }] = await Promise.all([
+      callApi('list_trips_for_event', { event_id: currentEvent.id }),
+      callApi('list_requests_for_event', { event_id: currentEvent.id }),
+    ]);
+    managerTrips = trips || [];
+    managerRequests = requests || [];
+    renderManagerBoard();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderManagerBoard() {
+  const el = document.getElementById('manager-content');
+  el.innerHTML = `
+    <div class="section-title">共乘司機 Drivers</div>
+    <div id="mgr-trips-list"></div>
+    <div class="section-title">共乘申請 Ride requests</div>
+    <div id="mgr-requests-list"></div>`;
+  renderManagerTrips();
+  renderManagerRequests();
+}
+
+function renderManagerTrips() {
+  const listEl = document.getElementById('mgr-trips-list');
+  if (managerTrips.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前尚無人提供共乘。</div>';
+    return;
+  }
+
+  listEl.innerHTML = managerTrips.map(t => {
+    const full = t.passengers.length >= t.seats_total;
+    const meta = [t.available_date, t.available_time, t.departure_point].filter(Boolean).join('　');
+    const carInfo = [t.car_brand, t.car_color, t.car_plate].filter(Boolean).join('・');
+    const passengerRows = t.passengers.map(p => `
+      <div class="passenger-row">
+        <span>👤 ${escapeHtml(p.name)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}</span>
+        <button type="button" class="btn-text" data-unassign="${p.request_id}">取消配對</button>
+      </div>`).join('');
+
+    return `
+      <div class="trip-card" data-trip-id="${t.id}">
+        <div class="trip-card-top">
+          <span class="trip-card-name">${escapeHtml(t.driver_name)}</span>
+          <span class="seats-badge ${full ? 'full' : ''}">${t.passengers.length} / ${t.seats_total} 位</span>
+        </div>
+        <div class="trip-card-meta">${escapeHtml(meta)}${carInfo ? '　🚘 ' + escapeHtml(carInfo) : ''}</div>
+        <span class="trip-status-badge ${t.trip_status}">${STATUS_LABELS[t.trip_status]}</span>
+        ${passengerRows}
+        <div class="trip-card-actions">
+          <button type="button" class="btn-text danger" data-delete-trip="${t.id}">刪除此共乘</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('[data-unassign]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await callApi('unassign_ride_request', { request_id: btn.dataset.unassign });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('取消配對失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete-trip]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定要刪除此共乘嗎？已配對的乘客將被移回待配對。')) return;
+      btn.disabled = true;
+      try {
+        await callApi('manager_delete_trip', { id: btn.dataset.deleteTrip });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function renderManagerRequests() {
+  const listEl = document.getElementById('mgr-requests-list');
+  const pending = managerRequests.filter(r => r.status === 'pending');
+  if (pending.length === 0) {
+    listEl.innerHTML = '<div class="empty-note">目前沒有待配對的共乘申請。</div>';
+    return;
+  }
+
+  const assignedCountFor = (tripId) => managerTrips.find(t => t.id === tripId)?.passengers?.length || 0;
+  const tripOptions = managerTrips
+    .filter(t => t.passengers.length < t.seats_total)
+    .map(t => `<option value="${t.id}">${escapeHtml(t.driver_name)}（尚有 ${t.seats_total - assignedCountFor(t.id)} 位）</option>`)
+    .join('');
+
+  listEl.innerHTML = pending.map(r => `
+    <div class="trip-card" data-request-id="${r.id}">
+      <div class="trip-card-top">
+        <span class="trip-card-name">${escapeHtml(r.name)}</span>
+      </div>
+      <div class="trip-card-meta">${escapeHtml(r.phone || '')}${r.pickup_area ? '　📍' + escapeHtml(r.pickup_area) : ''}</div>
+      <div class="trip-card-actions">
+        <select class="request-select" data-assign="${r.id}">
+          <option value="">指派給司機…</option>
+          ${tripOptions}
+        </select>
+        <button type="button" class="btn-text danger" data-delete-request="${r.id}">刪除</button>
+      </div>
+    </div>
+  `).join('');
+
+  listEl.querySelectorAll('[data-assign]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const tripId = sel.value;
+      if (!tripId) return;
+      sel.disabled = true;
+      try {
+        await callApi('assign_ride_request', { request_id: sel.dataset.assign, trip_id: tripId });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('指派失敗：' + err.message);
+        sel.disabled = false;
+      }
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete-request]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定要刪除此共乘申請嗎？')) return;
+      btn.disabled = true;
+      try {
+        await callApi('manager_delete_ride_request', { id: btn.dataset.deleteRequest });
+        await loadManagerBoard();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+/* ================= LIFF BOOT ================= */
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'carpool').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    setLoadingText('載入中…');
+    whoami = await callApi('whoami');
+    renderRoleList();
+
+    showScreen('role');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+initLiff();
+</script>
+</body>
+</html>

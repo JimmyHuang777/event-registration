@@ -30,6 +30,10 @@
 //   toggle_event_active — flip an event's is_active flag.
 //   delete_event       — delete an event.
 //
+// Carpool (共乘) matching has moved to its own dedicated carpool-api
+// Edge Function, gated by the separate car_manager_admins list rather
+// than event_admins — this function no longer handles it.
+//
 // DEPLOY: this repo's GitHub Actions workflow deploys it
 // automatically on push to supabase/functions/events-admin-api/**.
 // Deployed with --no-verify-jwt (this function does its own auth via
