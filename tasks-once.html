@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>單次任務 One-time Tasks</title>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --field-bg: #F3F4F6;
+    --error: #E0453C;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--paper); display: flex; flex-direction: column; }
+  .header { background: var(--line-green); color: white; padding: 24px 20px 20px; }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  .header p { margin: 6px 0 0; font-size: 13px; opacity: 0.92; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--field-bg); }
+  .profile-row img { width: 32px; height: 32px; border-radius: 50%; background: var(--field-bg); object-fit: cover; }
+  .profile-row .name { font-size: 13.5px; font-weight: 600; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 20px 0; }
+  .tab-btn {
+    flex: 1 1 30%; padding: 9px 4px; border-radius: 20px; border: 1.5px solid var(--field-bg);
+    background: var(--field-bg); color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; text-align: center; white-space: nowrap;
+  }
+  .tab-btn.active { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .task-list { padding: 12px 20px 24px; flex: 1; }
+  .date-heading { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
+  .date-heading:first-child { margin-top: 0; }
+
+  .task-card {
+    border: 1.5px solid var(--field-bg); border-radius: 12px; padding: 14px; margin-bottom: 10px;
+  }
+  .task-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .task-place { font-size: 12px; color: var(--ink-soft); margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
+  .task-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 8px; }
+
+  .subtask-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--field-bg); }
+  .subtask-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 6px 0; font-size: 13px; }
+  .subtask-row .subtask-title { flex: 1 1 auto; min-width: 40%; }
+  .subtask-row .subtask-title.done { text-decoration: line-through; color: var(--ink-soft); }
+  .subtask-row .subtask-by { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .subtask-actions { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+  .subtask-take-btn {
+    background: var(--line-green); color: white; border: none; border-radius: 12px;
+    padding: 5px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .subtask-complete-btn {
+    background: var(--ink); color: white; border: none; border-radius: 12px;
+    padding: 5px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .subtask-give-up-btn {
+    background: none; border: 1.5px solid #F3D4D1; color: var(--error); border-radius: 12px;
+    padding: 4px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .subtask-undo-btn {
+    background: none; border: 1.5px solid var(--field-bg); color: var(--ink-soft); border-radius: 12px;
+    padding: 4px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .status-badge.unassigned { background: var(--field-bg); color: var(--ink-soft); }
+  .status-badge.taken { background: #E7F0FF; color: #1D5FC2; }
+  .status-badge.completed { background: #FFF3D6; color: #92650A; }
+  .status-badge.incomplete { background: #FBE4E1; color: var(--error); }
+
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 40px 20px; }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--field-bg);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 300px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen { display: none; flex-direction: column; flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <h1>單次任務 One-time Tasks</h1>
+      <p>只顯示單次（非例行）的工作項目，以子項目為單位認領／完成</p>
+    </div>
+
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-view="all">所有組內可了愿</button>
+      <button type="button" class="tab-btn" data-view="mine">我的行功了愿</button>
+      <button type="button" class="tab-btn" data-view="today">今日組內了愿</button>
+    </div>
+
+    <div class="task-list" id="task-list"></div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+// LIFF_ID is looked up at load time from the liff_apps table (the
+// dashboard's Task Management panel creates it automatically, the
+// same way each event gets its own unique LIFF app) — no manual
+// LINE Developers Console step needed.
+let LIFF_ID = null;
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/tasks-api';
+
+// Used ONLY to read the public liff_apps row before login — same
+// pattern as the registration form's public event lookup.
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  main: document.getElementById('main-screen'),
+};
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'main') { el.style.display = key === name ? 'flex' : 'none'; }
+    else { el.classList.toggle('active', key === name); }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let allTasks = [];
+let activeView = 'all'; // 'all' | 'mine' | 'today'
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'tasks_once').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台的「任務管理」中建立「單次任務」連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    await loadTasks();
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+async function loadTasks() {
+  const { tasks } = await callApi('list_tasks', { days: 90 });
+  // This page is the separate "one-time task" link — same tasks-api
+  // backend and data as the main Task Roster link, just filtered down
+  // to templates created with recurrence 'once', so routine daily/
+  // weekly/monthly jobs never show up here.
+  allTasks = (tasks || []).filter(t => t.recurrence === 'once');
+  renderTasks();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeView = btn.dataset.view;
+    renderTasks();
+  });
+});
+
+function formatDateHeading(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const weekday = ['週日','週一','週二','週三','週四','週五','週六'][d.getDay()];
+  return d.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' }) + '（' + weekday + '）';
+}
+
+const STATUS_LABEL = {
+  unassigned: '未指派',
+  taken: '已指派',
+  completed: '已完成',
+  incomplete: '未能完成',
+};
+
+function statusBadgeHTML(status) {
+  return `<span class="status-badge ${status}">${STATUS_LABEL[status] || status}</span>`;
+}
+
+// mode 'browse' — 所有組內可了愿 / 今日組內了愿: every subtask on the
+// job is shown with its current status; only 未指派/未能完成 ones
+// get a Take button (read-only otherwise, since acting on someone
+// else's subtask happens from their own 我的行功了愿 tab).
+// mode 'mine' — 我的行功了愿: only the caller's own subtasks (taken or
+// completed by them) are shown, each with actions to complete, give
+// up, or undo.
+function subtaskListHTML(t, mode) {
+  const iid = t.instance_id;
+  let subtasks = t.subtasks || [];
+  if (mode === 'mine') subtasks = subtasks.filter(s => s.assigned_to_me);
+  if (subtasks.length === 0) return '';
+
+  return `
+    <div class="subtask-list">
+      ${subtasks.map(s => {
+        const sid = s.subtask_template_id;
+
+        if (mode === 'mine') {
+          if (s.status === 'taken') {
+            return `
+              <div class="subtask-row">
+                <span class="subtask-title">${escapeHtml(s.title)}</span>
+                <div class="subtask-actions">
+                  <button type="button" class="subtask-complete-btn" data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">已完成</button>
+                  <button type="button" class="subtask-give-up-btn" data-action="release-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">放棄</button>
+                </div>
+              </div>`;
+          }
+          // completed
+          return `
+            <div class="subtask-row">
+              <span class="subtask-title done">${escapeHtml(s.title)}</span>
+              <div class="subtask-actions">
+                ${statusBadgeHTML('completed')}
+                <button type="button" class="subtask-undo-btn" data-action="undo-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">復原 Undo</button>
+              </div>
+            </div>`;
+        }
+
+        // browse mode
+        if (s.status === 'unassigned' || s.status === 'incomplete') {
+          return `
+            <div class="subtask-row">
+              <span class="subtask-title">${escapeHtml(s.title)}</span>
+              <div class="subtask-actions">
+                ${statusBadgeHTML(s.status)}
+                <button type="button" class="subtask-take-btn" data-action="claim-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">認領 Take</button>
+              </div>
+            </div>`;
+        }
+        return `
+          <div class="subtask-row">
+            <span class="subtask-title ${s.status === 'completed' ? 'done' : ''}">${escapeHtml(s.title)}</span>
+            <div class="subtask-actions">
+              ${statusBadgeHTML(s.status)}
+              <span class="subtask-by">${escapeHtml(s.assigned_to_me ? '你' : (s.assigned_name || '—'))}</span>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// The job itself is just a heading/container now — only its
+// sub-tasks can be taken or completed.
+function taskCardHTML(t, mode) {
+  return `
+    <div class="task-card">
+      <div class="task-title">${escapeHtml(t.title)}</div>
+      ${t.place ? `<div class="task-place">📍 ${escapeHtml(t.place)}</div>` : ''}
+      ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
+      ${subtaskListHTML(t, mode)}
+    </div>`;
+}
+
+function bindTaskListEvents(listEl) {
+  listEl.querySelectorAll('[data-action="claim-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => claimSubtask(btn.dataset.instanceId, btn.dataset.subtaskId));
+  });
+  listEl.querySelectorAll('[data-action="release-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => releaseSubtask(btn.dataset.instanceId, btn.dataset.subtaskId));
+  });
+  listEl.querySelectorAll('[data-action="complete-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => completeSubtask(btn.dataset.instanceId, btn.dataset.subtaskId, true));
+  });
+  listEl.querySelectorAll('[data-action="undo-subtask"]').forEach(btn => {
+    btn.addEventListener('click', () => completeSubtask(btn.dataset.instanceId, btn.dataset.subtaskId, false));
+  });
+}
+
+function hasMySubtask(t) {
+  return !!(t.subtasks && t.subtasks.some(s => s.assigned_to_me));
+}
+
+// toISOString() converts to UTC first, which is a day behind local
+// time for anyone in a positive UTC offset (e.g. Taipei, UTC+8) for
+// part of the day — build the date string from local fields instead
+// so "today" actually means today wherever the member is.
+function localTodayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function filterForView(view) {
+  if (view === 'today') {
+    const todayStr = localTodayStr();
+    return allTasks.filter(t => t.occurrence_date === todayStr);
+  }
+  if (view === 'mine') {
+    return allTasks.filter(hasMySubtask);
+  }
+  // 'all'
+  return allTasks;
+}
+
+const emptyNoteByView = {
+  all: '目前沒有單次任務。',
+  mine: '您目前沒有已認領的子項目。',
+  today: '今天沒有單次任務。',
+};
+
+function renderTasks() {
+  const listEl = document.getElementById('task-list');
+
+  const filtered = filterForView(activeView);
+  const mode = activeView === 'mine' ? 'mine' : 'browse';
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div class="empty-note">${emptyNoteByView[activeView] || '目前沒有任務。'}</div>`;
+    return;
+  }
+
+  const byDate = {};
+  filtered.forEach(t => {
+    if (!byDate[t.occurrence_date]) byDate[t.occurrence_date] = [];
+    byDate[t.occurrence_date].push(t);
+  });
+
+  listEl.innerHTML = Object.keys(byDate).sort().map(date => `
+    <div class="date-heading">${formatDateHeading(date)}</div>
+    ${byDate[date].map(t => taskCardHTML(t, mode)).join('')}
+  `).join('');
+
+  bindTaskListEvents(listEl);
+}
+
+// Subtask/task status actions all just refetch and re-render — simpler
+// and safer than hand-patching every derived field (status badges,
+// "誰認領了" labels, slot counts) locally.
+async function refreshAfterChange() {
+  await loadTasks();
+}
+
+async function claimSubtask(instanceId, subtaskTemplateId) {
+  try {
+    await callApi('claim_subtask', { instance_id: instanceId, subtask_template_id: subtaskTemplateId });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('認領失敗，請稍後再試。\n' + err.message);
+  }
+}
+
+async function releaseSubtask(instanceId, subtaskTemplateId) {
+  try {
+    await callApi('release_subtask', { instance_id: instanceId, subtask_template_id: subtaskTemplateId });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('放棄失敗，請稍後再試。\n' + err.message);
+  }
+}
+
+async function completeSubtask(instanceId, subtaskTemplateId, completed) {
+  try {
+    await callApi('complete_subtask', { instance_id: instanceId, subtask_template_id: subtaskTemplateId, completed });
+    await refreshAfterChange();
+  } catch (err) {
+    alert('更新失敗，請稍後再試。\n' + err.message);
+    await refreshAfterChange(); // revert the checkbox visually
+  }
+}
+
+initLiff();
+</script>
+
+</body>
+</html>
