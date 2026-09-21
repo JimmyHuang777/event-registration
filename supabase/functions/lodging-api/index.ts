@@ -78,6 +78,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LINE_CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID")!;
+// Separate credential from LINE_CHANNEL_ID above (that one only verifies
+// LIFF login ID tokens). This one is the Messaging API channel's Channel
+// Access Token, needed to actively push a message to someone instead of
+// just replying to them. Optional — if it isn't set yet, manager alert
+// pushes are silently skipped rather than erroring.
+const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") || "";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -128,6 +134,36 @@ const MANAGER_ACTIONS = new Set([
 function requestGuestCount(req: { additional_guests?: unknown }) {
   const extra = Array.isArray(req.additional_guests) ? req.additional_guests.length : 0;
   return 1 + extra;
+}
+
+// Every Lodging Manager's line_user_id, for pushing them an alert.
+async function getLodgingManagerLineUserIds(): Promise<string[]> {
+  const { data: rows } = await supabase.from("lodging_manager_admins").select("user_id");
+  const userIds = (rows || []).map((r: any) => r.user_id).filter(Boolean);
+  if (userIds.length === 0) return [];
+  const { data: userRows } = await supabase.from("users").select("line_user_id").in("id", userIds);
+  return (userRows || []).map((u: any) => u.line_user_id).filter((id: unknown): id is string => !!id);
+}
+
+// Best-effort LINE push (multicast) to a list of line_user_id's. Never
+// throws — a notification failing must never block or fail the
+// member's own action. No-ops silently if the token isn't configured
+// yet or there's nobody to notify.
+async function pushLineNotification(lineUserIds: string[], text: string) {
+  if (!LINE_CHANNEL_ACCESS_TOKEN || lineUserIds.length === 0) return;
+  try {
+    await fetch("https://api.line.me/v2/bot/message/multicast", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      // LINE multicast accepts up to 500 recipients per call.
+      body: JSON.stringify({ to: lineUserIds.slice(0, 500), messages: [{ type: "text", text: text.slice(0, 5000) }] }),
+    });
+  } catch (_err) {
+    // Notification is best-effort only.
+  }
 }
 
 serve(async (req) => {
@@ -461,6 +497,21 @@ serve(async (req) => {
           }
           return json({ error: error.message }, 400);
         }
+
+        // Alert every Lodging Manager by LINE push — best-effort, never
+        // blocks or fails the guest's own request.
+        try {
+          const { data: eventRow } = await supabase.from("events").select("name").eq("id", event_id).maybeSingle();
+          const managerLineIds = await getLodgingManagerLineUserIds();
+          const count = requestGuestCount({ additional_guests: additionalGuests });
+          await pushLineNotification(
+            managerLineIds,
+            `🏠 新的住宿需求\n活動：${eventRow?.name || "活動"}\n房客：${guestName}（共 ${count} 人）\n請至住宿管理頁面配對房源。`
+          );
+        } catch (_err) {
+          // ignore — see pushLineNotification.
+        }
+
         return json({ request: data });
       }
 
