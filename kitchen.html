@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>天廚 Kitchen</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --line-green-dark: #05A648;
+    --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB;
+    --error: #E0483E; --error-bg: #FBEAE8;
+    --blue: #2563A8; --blue-bg: #E9F1FA;
+    --amber: #92650A; --amber-bg: #FFF3D6;
+    --purple: #6B5FB4; --purple-bg: #EEECFB;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; background: var(--paper); }
+
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--canvas); border-top-color: var(--line-green); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle { width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error); }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn { padding: 12px 20px; background: var(--line-green); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px; font-family: inherit; }
+  .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+
+  .board-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 18px 20px 14px; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .header .back-btn { background: none; border: none; font-size: 20px; color: var(--ink-soft); cursor: pointer; padding: 4px 6px 4px 0; font-family: inherit; }
+  .header .titles h1 { font-size: 17px; margin: 0; }
+  .header .titles p { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .content { padding: 4px 20px 32px; flex: 1; overflow-y: auto; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card { display: flex; align-items: center; gap: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 16px; text-decoration: none; color: inherit; cursor: pointer; width: 100%; text-align: left; font-family: inherit; }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon { width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; color: white; }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13px; padding: 20px 10px; }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
+  .section-title:first-child { margin-top: 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"], .field select, .field textarea {
+    width: 100%; padding: 11px 12px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 14.5px; font-family: inherit; background: var(--paper);
+  }
+  .field textarea { min-height: 70px; }
+  .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--line-green); }
+  .checkbox-list { border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 4px; max-height: 220px; overflow-y: auto; }
+  .checkbox-row-item { display: flex; align-items: center; gap: 8px; padding: 8px 8px; font-size: 13.5px; }
+  .checkbox-row-item input { width: 18px; height: 18px; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin: 6px 0 0; display: none; }
+  .btn-text { background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 10px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+  .btn-text.primary { background: var(--line-green); color: white; border-color: var(--line-green); }
+
+  .card { border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .card-name { font-size: 15px; font-weight: 700; }
+  .card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
+  .card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .card.clickable { cursor: pointer; }
+  .card.clickable:active { background: var(--canvas); }
+
+  .status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .status-badge.open { background: var(--amber-bg); color: var(--amber); }
+  .status-badge.claimed { background: var(--blue-bg); color: var(--blue); }
+  .status-badge.done { background: #E4F8EC; color: var(--line-green-dark); }
+
+  .role-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; background: var(--purple-bg); color: var(--purple); }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="altar-picker-screen" class="board-screen">
+    <div class="header">
+      <div class="titles">
+        <h1>🍚 天廚 Kitchen</h1>
+        <p>請選擇壇別</p>
+      </div>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="menu-list" id="altar-list"></div>
+  </div>
+
+  <div id="altar-home-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="altar-home-back-btn">‹</button>
+      <div class="titles">
+        <h1 id="altar-home-title">天廚</h1>
+        <p id="altar-home-role"></p>
+      </div>
+    </div>
+    <div class="menu-list" id="altar-home-list"></div>
+  </div>
+
+  <div id="recipes-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="recipes-back-btn">‹</button>
+      <div class="titles"><h1>📖 食譜 Recipes</h1><p id="recipes-altar-name"></p></div>
+    </div>
+    <div class="content" id="recipes-content"></div>
+  </div>
+
+  <div id="recipe-form-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="recipe-form-back-btn">‹</button>
+      <div class="titles"><h1 id="recipe-form-title">新增食譜</h1></div>
+    </div>
+    <div class="content" id="recipe-form-content"></div>
+  </div>
+
+  <div id="menus-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="menus-back-btn">‹</button>
+      <div class="titles"><h1>📋 菜單 Menus</h1><p id="menus-altar-name"></p></div>
+    </div>
+    <div class="content" id="menus-content"></div>
+  </div>
+
+  <div id="menu-form-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="menu-form-back-btn">‹</button>
+      <div class="titles"><h1 id="menu-form-title">新增菜單</h1></div>
+    </div>
+    <div class="content" id="menu-form-content"></div>
+  </div>
+
+  <div id="tasks-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="tasks-back-btn">‹</button>
+      <div class="titles"><h1>✅ 工作 Tasks</h1><p id="tasks-altar-name"></p></div>
+    </div>
+    <div class="content" id="tasks-content"></div>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/kitchen-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+let currentAltar = null; // { id, name, role }
+let allRecipes = [];
+let allMenus = [];
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen, .board-screen').forEach(el => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
+  const el = document.getElementById(name + '-screen');
+  if (el.classList.contains('state-screen')) { el.classList.add('active'); el.style.display = 'flex'; }
+  else { el.style.display = 'flex'; }
+}
+
+function setLoadingText(text) { const p = document.querySelector('#loading-screen p'); if (p) p.textContent = text; }
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms))]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str == null ? '' : str; return div.innerHTML; }
+
+const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', none: '' };
+const STATUS_LABELS = { open: '尚未認領', claimed: '已認領', done: '已完成' };
+
+/* ---------- Altar picker ---------- */
+
+async function loadAltarPicker() {
+  const listEl = document.getElementById('altar-list');
+  listEl.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { altars } = await callApi('list_my_kitchen_altars');
+    if (!altars || altars.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">您尚未被加入任何壇的天廚組，請聯繫管理員。</div>';
+      return;
+    }
+    listEl.innerHTML = '';
+    altars.forEach(a => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'menu-card';
+      card.innerHTML = `
+        <div class="menu-icon" style="background:#D97706;">🍚</div>
+        <div class="menu-body">
+          <div class="title">${escapeHtml(a.name)}</div>
+          <div class="desc">${a.role === 'leader' ? '天廚組長' : '天廚組員'}</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      `;
+      card.addEventListener('click', () => openAltarHome(a));
+      listEl.appendChild(card);
+    });
+  } catch (err) {
+    listEl.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+document.getElementById('altar-home-back-btn').addEventListener('click', () => showScreen('altar-picker'));
+
+function openAltarHome(altar) {
+  currentAltar = altar;
+  document.getElementById('altar-home-title').textContent = '🍚 ' + altar.name + ' · 天廚';
+  document.getElementById('altar-home-role').textContent = altar.role === 'leader' ? '天廚組長 Leader' : '天廚組員 Member';
+
+  const listEl = document.getElementById('altar-home-list');
+  const items = [
+    { key: 'menus', title: '📋 菜單 Menus', desc: '查看每日菜單' + (altar.role === 'leader' ? '，並可新增／編輯' : ''), color: '#2563A8' },
+    { key: 'recipes', title: '📖 食譜 Recipes', desc: '查看食譜庫' + (altar.role === 'leader' ? '，並可新增／編輯' : ''), color: '#6B5FB4' },
+    { key: 'tasks', title: '✅ 工作 Tasks', desc: altar.role === 'leader' ? '指派與追蹤備料／烹煮工作' : '認領尚未分配的工作', color: '#D97706' },
+  ];
+  listEl.innerHTML = '';
+  items.forEach(r => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'menu-card';
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${r.color};">${r.title.split(' ')[0]}</div>
+      <div class="menu-body"><div class="title">${r.title.slice(r.title.indexOf(' ') + 1)}</div><div class="desc">${r.desc}</div></div>
+      <div class="menu-arrow">›</div>
+    `;
+    card.addEventListener('click', () => {
+      if (r.key === 'menus') { showScreen('menus'); loadMenus(); }
+      else if (r.key === 'recipes') { showScreen('recipes'); loadRecipes(); }
+      else if (r.key === 'tasks') { showScreen('tasks'); loadTasks(); }
+    });
+    listEl.appendChild(card);
+  });
+
+  showScreen('altar-home');
+}
+
+/* ================= RECIPES ================= */
+
+async function loadRecipes() {
+  document.getElementById('recipes-altar-name').textContent = currentAltar.name;
+  const el = document.getElementById('recipes-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { recipes } = await callApi('list_recipes', { altar_id: currentAltar.id });
+    allRecipes = recipes || [];
+    renderRecipes();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderRecipes() {
+  const el = document.getElementById('recipes-content');
+  const isLeader = currentAltar.role === 'leader';
+  let html = isLeader ? '<button type="button" class="submit-btn" id="add-recipe-btn" style="width:100%; margin-bottom:16px; margin-top:4px;">＋ 新增食譜</button>' : '';
+  if (allRecipes.length === 0) {
+    html += '<div class="empty-state">尚無食譜。</div>';
+  } else {
+    html += allRecipes.map(r => `
+      <div class="card" data-recipe-id="${r.id}">
+        <div class="card-top"><div class="card-name">${escapeHtml(r.name)}</div>${r.servings ? '<span class="status-badge claimed">' + r.servings + ' 人份</span>' : ''}</div>
+        ${r.ingredients ? '<div class="card-meta">食材：' + escapeHtml(r.ingredients) + '</div>' : ''}
+        ${r.steps ? '<div class="card-meta">做法：' + escapeHtml(r.steps) + '</div>' : ''}
+        ${isLeader ? '<div class="card-actions"><button type="button" class="btn-text edit-recipe-btn">編輯</button><button type="button" class="btn-text danger delete-recipe-btn">刪除</button></div>' : ''}
+      </div>
+    `).join('');
+  }
+  el.innerHTML = html;
+
+  if (isLeader) {
+    document.getElementById('add-recipe-btn').addEventListener('click', () => openRecipeForm(null));
+    el.querySelectorAll('.edit-recipe-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => openRecipeForm(allRecipes.find(r => r.id === e.target.closest('.card').dataset.recipeId)));
+    });
+    el.querySelectorAll('.delete-recipe-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.closest('.card').dataset.recipeId;
+        if (!confirm('確定要刪除此食譜嗎？')) return;
+        try { await callApi('delete_recipe', { id }); await loadRecipes(); }
+        catch (err) { alert('刪除失敗：' + err.message); }
+      });
+    });
+  }
+}
+
+document.getElementById('recipes-back-btn').addEventListener('click', () => showScreen('altar-home'));
+
+function openRecipeForm(recipe) {
+  document.getElementById('recipe-form-title').textContent = recipe ? '編輯食譜' : '新增食譜';
+  const el = document.getElementById('recipe-form-content');
+  el.innerHTML = `
+    <div class="field"><label>食譜名稱 Name</label><input type="text" id="rf-name" value="${recipe ? escapeHtml(recipe.name) : ''}"></div>
+    <div class="field"><label>人份 Servings <span class="hint">選填</span></label><input type="number" id="rf-servings" min="1" value="${recipe && recipe.servings ? recipe.servings : ''}"></div>
+    <div class="field"><label>食材 Ingredients <span class="hint">選填</span></label><textarea id="rf-ingredients">${recipe ? escapeHtml(recipe.ingredients || '') : ''}</textarea></div>
+    <div class="field"><label>做法 Steps <span class="hint">選填</span></label><textarea id="rf-steps" style="min-height:100px;">${recipe ? escapeHtml(recipe.steps || '') : ''}</textarea></div>
+    <p class="modal-error" id="rf-error"></p>
+    <button type="button" class="submit-btn" id="rf-save-btn" style="width:100%;">儲存 Save</button>
+  `;
+  document.getElementById('rf-save-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('rf-error');
+    errEl.style.display = 'none';
+    const name = document.getElementById('rf-name').value.trim();
+    if (!name) { errEl.textContent = '請填寫食譜名稱。'; errEl.style.display = 'block'; return; }
+    const btn = document.getElementById('rf-save-btn');
+    btn.disabled = true;
+    try {
+      await callApi('save_recipe', {
+        id: recipe?.id, altar_id: currentAltar.id, name,
+        servings: document.getElementById('rf-servings').value || null,
+        ingredients: document.getElementById('rf-ingredients').value.trim(),
+        steps: document.getElementById('rf-steps').value.trim(),
+      });
+      showScreen('recipes');
+      await loadRecipes();
+    } catch (err) { errEl.textContent = err.message; errEl.style.display = 'block'; btn.disabled = false; }
+  });
+  showScreen('recipe-form');
+}
+
+document.getElementById('recipe-form-back-btn').addEventListener('click', () => showScreen('recipes'));
+
+/* ================= MENUS ================= */
+
+async function loadMenus() {
+  document.getElementById('menus-altar-name').textContent = currentAltar.name;
+  const el = document.getElementById('menus-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { menus } = await callApi('list_menus', { altar_id: currentAltar.id });
+    allMenus = menus || [];
+    renderMenus();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderMenus() {
+  const el = document.getElementById('menus-content');
+  const isLeader = currentAltar.role === 'leader';
+  let html = isLeader ? '<button type="button" class="submit-btn" id="add-menu-btn" style="width:100%; margin-bottom:16px; margin-top:4px;">＋ 新增菜單</button>' : '';
+  if (allMenus.length === 0) {
+    html += '<div class="empty-state">尚無菜單。</div>';
+  } else {
+    html += allMenus.map(m => `
+      <div class="card" data-menu-id="${m.id}">
+        <div class="card-top"><div class="card-name">${escapeHtml(m.menu_date)}${m.meal !== 'none' ? ' · ' + MEAL_LABELS[m.meal] : ''}</div></div>
+        <div class="card-meta">${m.items.length === 0 ? '（尚未加入菜色）' : m.items.map(i => escapeHtml(i.recipe_name)).join('、')}</div>
+        ${m.notes ? '<div class="card-meta">' + escapeHtml(m.notes) + '</div>' : ''}
+        ${isLeader ? '<div class="card-actions"><button type="button" class="btn-text edit-menu-btn">編輯</button><button type="button" class="btn-text danger delete-menu-btn">刪除</button></div>' : ''}
+      </div>
+    `).join('');
+  }
+  el.innerHTML = html;
+
+  if (isLeader) {
+    document.getElementById('add-menu-btn').addEventListener('click', () => openMenuForm(null));
+    el.querySelectorAll('.edit-menu-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => openMenuForm(allMenus.find(m => m.id === e.target.closest('.card').dataset.menuId)));
+    });
+    el.querySelectorAll('.delete-menu-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.closest('.card').dataset.menuId;
+        if (!confirm('確定要刪除此菜單嗎？')) return;
+        try { await callApi('delete_menu', { id }); await loadMenus(); }
+        catch (err) { alert('刪除失敗：' + err.message); }
+      });
+    });
+  }
+}
+
+document.getElementById('menus-back-btn').addEventListener('click', () => showScreen('altar-home'));
+
+async function openMenuForm(menu) {
+  document.getElementById('menu-form-title').textContent = menu ? '編輯菜單' : '新增菜單';
+  const el = document.getElementById('menu-form-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  showScreen('menu-form');
+
+  if (allRecipes.length === 0) {
+    try { const { recipes } = await callApi('list_recipes', { altar_id: currentAltar.id }); allRecipes = recipes || []; } catch (err) { /* ignore */ }
+  }
+
+  const selectedIds = menu ? menu.items.map(i => i.recipe_id) : [];
+  el.innerHTML = `
+    <div class="field"><label>日期 Date</label><input type="date" id="mf-date" value="${menu ? menu.menu_date : ''}"></div>
+    <div class="field">
+      <label>餐別 Meal</label>
+      <select id="mf-meal">
+        <option value="none" ${(!menu || menu.meal === 'none') ? 'selected' : ''}>不分餐別</option>
+        <option value="breakfast" ${menu && menu.meal === 'breakfast' ? 'selected' : ''}>早餐</option>
+        <option value="lunch" ${menu && menu.meal === 'lunch' ? 'selected' : ''}>午餐</option>
+        <option value="dinner" ${menu && menu.meal === 'dinner' ? 'selected' : ''}>晚餐</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>菜色 Dishes <span class="hint">從食譜庫勾選</span></label>
+      <div class="checkbox-list" id="mf-recipe-list">
+        ${allRecipes.length === 0 ? '<div class="empty-note">尚無食譜，請先到「食譜」建立。</div>' : allRecipes.map(r => `
+          <div class="checkbox-row-item">
+            <input type="checkbox" value="${r.id}" ${selectedIds.includes(r.id) ? 'checked' : ''}>
+            <span>${escapeHtml(r.name)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="field"><label>備註 Notes <span class="hint">選填</span></label><textarea id="mf-notes">${menu ? escapeHtml(menu.notes || '') : ''}</textarea></div>
+    <p class="modal-error" id="mf-error"></p>
+    <button type="button" class="submit-btn" id="mf-save-btn" style="width:100%;">儲存 Save</button>
+  `;
+
+  document.getElementById('mf-save-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('mf-error');
+    errEl.style.display = 'none';
+    const date = document.getElementById('mf-date').value;
+    if (!date) { errEl.textContent = '請選擇日期。'; errEl.style.display = 'block'; return; }
+    const recipeIds = Array.from(document.querySelectorAll('#mf-recipe-list input:checked')).map(cb => cb.value);
+    const btn = document.getElementById('mf-save-btn');
+    btn.disabled = true;
+    try {
+      await callApi('save_menu', {
+        id: menu?.id, altar_id: currentAltar.id, menu_date: date,
+        meal: document.getElementById('mf-meal').value,
+        notes: document.getElementById('mf-notes').value.trim(),
+        recipe_ids: recipeIds,
+      });
+      showScreen('menus');
+      await loadMenus();
+    } catch (err) { errEl.textContent = err.message; errEl.style.display = 'block'; btn.disabled = false; }
+  });
+}
+
+document.getElementById('menu-form-back-btn').addEventListener('click', () => showScreen('menus'));
+
+/* ================= TASKS ================= */
+
+async function loadTasks() {
+  document.getElementById('tasks-altar-name').textContent = currentAltar.name;
+  const el = document.getElementById('tasks-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const [tasksRes, membersRes] = await Promise.all([
+      callApi('list_tasks', { altar_id: currentAltar.id }),
+      currentAltar.role === 'leader' ? callApi('list_altar_members', { altar_id: currentAltar.id }) : Promise.resolve({ members: [] }),
+    ]);
+    renderTasks(tasksRes.tasks || [], membersRes.members || []);
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderTasks(tasks, members) {
+  const el = document.getElementById('tasks-content');
+  const isLeader = currentAltar.role === 'leader';
+  let html = '';
+  if (isLeader) {
+    html += `
+      <div class="add-item-row" style="display:flex; gap:8px; margin-bottom:16px; margin-top:4px;">
+        <input type="text" id="new-task-content" placeholder="新增工作內容…" style="flex:1; padding:11px 12px; border:1.5px solid var(--line); border-radius:10px; font-size:14.5px; font-family:inherit;">
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <select id="new-task-assignee" style="flex:1; padding:11px 12px; border:1.5px solid var(--line); border-radius:10px; font-size:13.5px; font-family:inherit;">
+          <option value="">不指派（開放認領）</option>
+          ${members.map(m => `<option value="${m.user_id}">${escapeHtml(m.name)}${m.role === 'leader' ? '（組長）' : ''}</option>`).join('')}
+        </select>
+        <button type="button" class="btn-text primary" id="add-task-btn">＋ 新增</button>
+      </div>
+    `;
+  }
+  if (tasks.length === 0) {
+    html += '<div class="empty-state">目前沒有工作。</div>';
+  } else {
+    html += tasks.map(t => `
+      <div class="card" data-task-id="${t.id}">
+        <div class="card-top"><div class="card-name">${escapeHtml(t.content)}</div><span class="status-badge ${t.status}">${STATUS_LABELS[t.status]}</span></div>
+        <div class="card-meta">${t.assignee_name ? '認領人：' + escapeHtml(t.assignee_name) : '尚未認領'}</div>
+        <div class="card-actions">
+          ${t.status === 'open' ? '<button type="button" class="btn-text primary claim-task-btn">認領 Claim</button>' : ''}
+          ${t.is_mine && t.status === 'claimed' ? '<button type="button" class="btn-text primary complete-task-btn">完成 Complete</button><button type="button" class="btn-text unclaim-task-btn">放棄</button>' : ''}
+          ${isLeader && t.status === 'claimed' && !t.is_mine ? '<button type="button" class="btn-text primary complete-task-btn">標記完成</button>' : ''}
+          ${isLeader ? '<button type="button" class="btn-text danger delete-task-btn">刪除</button>' : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+  el.innerHTML = html;
+
+  if (isLeader) {
+    document.getElementById('add-task-btn').addEventListener('click', async (e) => {
+      const content = document.getElementById('new-task-content').value.trim();
+      if (!content) return;
+      const assignee = document.getElementById('new-task-assignee').value || null;
+      e.target.disabled = true;
+      try { await callApi('add_task', { altar_id: currentAltar.id, content, assignee_user_id: assignee }); await loadTasks(); }
+      catch (err) { alert('新增失敗：' + err.message); e.target.disabled = false; }
+    });
+  }
+  el.querySelectorAll('.claim-task-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.target.closest('.card').dataset.taskId;
+      e.target.disabled = true;
+      try { await callApi('claim_task', { task_id: id }); await loadTasks(); }
+      catch (err) { alert('認領失敗：' + err.message); e.target.disabled = false; }
+    });
+  });
+  el.querySelectorAll('.complete-task-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.target.closest('.card').dataset.taskId;
+      e.target.disabled = true;
+      try { await callApi('complete_task', { task_id: id }); await loadTasks(); }
+      catch (err) { alert('更新失敗：' + err.message); e.target.disabled = false; }
+    });
+  });
+  el.querySelectorAll('.unclaim-task-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.target.closest('.card').dataset.taskId;
+      e.target.disabled = true;
+      try { await callApi('unclaim_task', { task_id: id }); await loadTasks(); }
+      catch (err) { alert('放棄失敗：' + err.message); e.target.disabled = false; }
+    });
+  });
+  el.querySelectorAll('.delete-task-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      if (!confirm('確定要刪除此工作嗎？')) return;
+      const id = e.target.closest('.card').dataset.taskId;
+      try { await callApi('delete_task', { id }); await loadTasks(); }
+      catch (err) { alert('刪除失敗：' + err.message); }
+    });
+  });
+}
+
+document.getElementById('tasks-back-btn').addEventListener('click', () => showScreen('altar-home'));
+
+/* ================= LIFF BOOT ================= */
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'kitchen').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent = '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent = 'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    setLoadingText('載入中…');
+    await callApi('whoami');
+
+    showScreen('altar-picker');
+    loadAltarPicker();
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => { liff.logout(); window.location.reload(); });
+
+initLiff();
+</script>
+</body>
+</html>
