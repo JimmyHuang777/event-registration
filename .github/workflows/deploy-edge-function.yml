@@ -14,6 +14,7 @@ on:
       - 'supabase/functions/events-admin-api/**'
       - 'supabase/functions/carpool-api/**'
       - 'supabase/functions/lodging-api/**'
+      - 'supabase/functions/meeting-api/**'
 
 jobs:
   deploy:
@@ -34,7 +35,6 @@ jobs:
         run: supabase functions deploy registrant-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
       - name: Deploy tasks-api Edge Function
         run: supabase functions deploy tasks-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
@@ -77,5 +77,10 @@ jobs:
 
       - name: Deploy lodging-api Edge Function
         run: supabase functions deploy lodging-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy meeting-api Edge Function
+        run: supabase functions deploy meeting-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>溝通共識 Meetings</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --line-green-dark: #05A648;
+    --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB;
+    --error: #E0483E; --error-bg: #FBEAE8;
+    --blue: #2563A8; --blue-bg: #E9F1FA;
+    --amber: #92650A; --amber-bg: #FFF3D6;
+    --purple: #6B5FB4; --purple-bg: #EEECFB;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; background: var(--paper); }
+
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+    font-family: inherit;
+  }
+  .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+
+  .board-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 18px 20px 14px; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .header .back-btn { background: none; border: none; font-size: 20px; color: var(--ink-soft); cursor: pointer; padding: 4px 6px 4px 0; font-family: inherit; }
+  .header .titles h1 { font-size: 17px; margin: 0; }
+  .header .titles p { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; }
+
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .content { padding: 4px 20px 32px; flex: 1; overflow-y: auto; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+    text-decoration: none; color: inherit; cursor: pointer; width: 100%; text-align: left; font-family: inherit;
+  }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; color: white;
+  }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+  .empty-note { text-align: center; color: var(--ink-soft); font-size: 13px; padding: 20px 10px; }
+
+  .section-title { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 18px 0 8px; }
+  .section-title:first-child { margin-top: 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; line-height: 1.5; font-weight: 400; }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"], .field select, .field textarea {
+    width: 100%; padding: 11px 12px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 14.5px; font-family: inherit; background: var(--paper);
+  }
+  .field textarea { min-height: 70px; }
+  .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--line-green); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .checkbox-row input { width: 18px; height: 18px; }
+
+  .modal-error { color: var(--error); font-size: 13px; margin: 6px 0 0; display: none; }
+
+  .btn-text { background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 10px; font-family: inherit; }
+  .btn-text.danger { color: var(--error); }
+  .btn-text.primary { background: var(--line-green); color: white; border-color: var(--line-green); }
+
+  .meeting-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; cursor: pointer; }
+  .meeting-card:active { background: var(--canvas); }
+  .meeting-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .meeting-card-name { font-size: 15px; font-weight: 700; }
+  .meeting-card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
+  .status-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .status-badge.scheduled { background: var(--amber-bg); color: var(--amber); }
+  .status-badge.completed { background: #E4F8EC; color: var(--line-green-dark); }
+  .status-badge.cancelled { background: var(--canvas); color: var(--ink-soft); }
+  .attend-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; margin-left: 6px; }
+  .attend-badge.yes { background: var(--blue-bg); color: var(--blue); }
+  .attend-badge.no { background: var(--canvas); color: var(--ink-soft); }
+
+  .info-card { background: var(--canvas); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.8; }
+  .notes-card { background: var(--purple-bg); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; }
+  .notes-card .label { font-size: 12px; font-weight: 700; color: var(--purple); margin-bottom: 6px; }
+
+  .item-row { display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid var(--line); padding: 10px 0; }
+  .item-row:first-child { border-top: none; }
+  .item-row input[type="checkbox"] { width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; }
+  .item-row .item-content { flex: 1; font-size: 13.5px; line-height: 1.5; }
+  .item-row .item-content.done { text-decoration: line-through; color: var(--ink-soft); }
+  .item-row .item-meta { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  .attendee-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding: 9px 0; font-size: 13.5px; }
+  .attendee-row:first-child { border-top: none; }
+  .attendee-row .name { font-weight: 600; }
+
+  .type-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .type-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .type-card-name { font-size: 15px; font-weight: 700; }
+  .type-card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
+  .type-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  .add-item-row { display: flex; gap: 8px; margin-top: 10px; }
+  .add-item-row input { flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="role-screen" class="board-screen">
+    <div class="header">
+      <div class="titles">
+        <h1>🗣️ 溝通共識 Meetings</h1>
+        <p>請選擇您要使用的功能</p>
+      </div>
+    </div>
+    <div class="profile-row">
+      <img id="profile-pic" src="" alt="">
+      <span class="name" id="profile-name">—</span>
+    </div>
+    <div class="menu-list" id="role-list"></div>
+  </div>
+
+  <div id="my-meetings-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="my-meetings-back-btn">‹</button>
+      <div class="titles">
+        <h1>📅 我的會議 My Meetings</h1>
+        <p>近 30 天內與未來 90 天內的會議</p>
+      </div>
+    </div>
+    <div class="content" id="my-meetings-content"></div>
+  </div>
+
+  <div id="meeting-detail-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="meeting-detail-back-btn">‹</button>
+      <div class="titles">
+        <h1 id="meeting-detail-title">會議詳情</h1>
+        <p id="meeting-detail-date"></p>
+      </div>
+    </div>
+    <div class="content" id="meeting-detail-content"></div>
+  </div>
+
+  <div id="my-items-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="my-items-back-btn">‹</button>
+      <div class="titles">
+        <h1>📋 我的待辦事項 My Action Items</h1>
+        <p>每場會議指派給您的待辦事項</p>
+      </div>
+    </div>
+    <div class="content" id="my-items-content"></div>
+  </div>
+
+  <div id="admin-home-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-home-back-btn">‹</button>
+      <div class="titles">
+        <h1>🗂️ 會議管理 Meeting Admin</h1>
+        <p>管理會議類型與記錄會議內容</p>
+      </div>
+    </div>
+    <div class="menu-list" id="admin-home-list"></div>
+  </div>
+
+  <div id="admin-types-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-types-back-btn">‹</button>
+      <div class="titles">
+        <h1>🗂️ 會議類型 Meeting Types</h1>
+        <p>設定週期、群組與地點</p>
+      </div>
+    </div>
+    <div class="content" id="admin-types-content"></div>
+  </div>
+
+  <div id="admin-type-form-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-type-form-back-btn">‹</button>
+      <div class="titles">
+        <h1 id="admin-type-form-title">新增會議類型</h1>
+      </div>
+    </div>
+    <div class="content" id="admin-type-form-content"></div>
+  </div>
+
+  <div id="admin-instances-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-instances-back-btn">‹</button>
+      <div class="titles">
+        <h1>📅 即將到來的會議 Upcoming Meetings</h1>
+        <p>未來 60 天內已排程的會議場次</p>
+      </div>
+    </div>
+    <div class="content" id="admin-instances-content"></div>
+  </div>
+
+  <div id="admin-instance-detail-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-instance-detail-back-btn">‹</button>
+      <div class="titles">
+        <h1 id="admin-instance-detail-title">會議記錄</h1>
+        <p id="admin-instance-detail-date"></p>
+      </div>
+    </div>
+    <div class="content" id="admin-instance-detail-content"></div>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/meeting-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+let whoami = null;
+let allGroups = [];
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen, .board-screen').forEach(el => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
+  const el = document.getElementById(name + '-screen');
+  if (el.classList.contains('state-screen')) {
+    el.classList.add('active');
+    el.style.display = 'flex';
+  } else {
+    el.style.display = 'flex';
+  }
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms)),
+  ]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+const STATUS_LABELS = { scheduled: '尚未召開', completed: '已完成', cancelled: '已取消' };
+const RECURRENCE_LABELS = { weekly: '每週', monthly: '每月', once: '單次' };
+const WEEKDAY_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+
+/* ---------- Role picker ---------- */
+
+function renderRoleList() {
+  const listEl = document.getElementById('role-list');
+  listEl.innerHTML = '';
+
+  const roles = [
+    { key: 'my-meetings', title: '📅 我的會議 My Meetings', desc: '查看您受邀的會議、簽到、閱讀紀錄', color: '#2E90FA' },
+    { key: 'my-items', title: '📋 我的待辦事項 My Action Items', desc: '查看指派給您的待辦事項', color: '#6B5FB4' },
+  ];
+  if (whoami.is_meeting_admin) {
+    roles.push({ key: 'admin', title: '🗂️ 我是會議管理員 I am a Meeting Admin', desc: '管理會議類型、記錄出席與紀錄', color: '#F79009' });
+  }
+
+  roles.forEach(r => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'menu-card';
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${r.color};">${r.title.split(' ')[0]}</div>
+      <div class="menu-body">
+        <div class="title">${r.title.slice(r.title.indexOf(' ') + 1)}</div>
+        <div class="desc">${r.desc}</div>
+      </div>
+      <div class="menu-arrow">›</div>
+    `;
+    card.addEventListener('click', () => {
+      if (r.key === 'my-meetings') { showScreen('my-meetings'); loadMyMeetings(); }
+      else if (r.key === 'my-items') { showScreen('my-items'); loadMyItems(); }
+      else if (r.key === 'admin') { showScreen('admin-home'); renderAdminHome(); }
+    });
+    listEl.appendChild(card);
+  });
+}
+
+document.getElementById('my-meetings-back-btn').addEventListener('click', () => showScreen('role'));
+document.getElementById('my-items-back-btn').addEventListener('click', () => showScreen('role'));
+document.getElementById('admin-home-back-btn').addEventListener('click', () => showScreen('role'));
+
+/* ================= MEMBER: MY MEETINGS ================= */
+
+async function loadMyMeetings() {
+  const el = document.getElementById('my-meetings-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { meetings } = await callApi('list_my_meetings');
+    renderMyMeetings(meetings || []);
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderMyMeetings(meetings) {
+  const el = document.getElementById('my-meetings-content');
+  if (meetings.length === 0) {
+    el.innerHTML = '<div class="empty-state">目前沒有您受邀的會議。</div>';
+    return;
+  }
+  el.innerHTML = meetings.map(m => `
+    <div class="meeting-card" data-instance-id="${m.id}">
+      <div class="meeting-card-top">
+        <div class="meeting-card-name">${escapeHtml(m.type_name)}</div>
+        <span class="status-badge ${m.status}">${STATUS_LABELS[m.status] || m.status}</span>
+      </div>
+      <div class="meeting-card-meta">
+        ${escapeHtml(m.meeting_date)}${m.place ? ' · ' + escapeHtml(m.place) : ''}
+        <span class="attend-badge ${m.attended ? 'yes' : 'no'}">${m.attended ? '已簽到' : '尚未簽到'}</span>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('.meeting-card').forEach(card => {
+    card.addEventListener('click', () => openMeetingDetail(card.dataset.instanceId));
+  });
+}
+
+async function openMeetingDetail(instanceId) {
+  showScreen('meeting-detail');
+  const el = document.getElementById('meeting-detail-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { meeting, my_attendance, my_action_items } = await callApi('get_meeting', { instance_id: instanceId });
+    document.getElementById('meeting-detail-title').textContent = meeting.type_name;
+    document.getElementById('meeting-detail-date').textContent = meeting.meeting_date + (meeting.place ? ' · ' + meeting.place : '');
+
+    let html = '';
+    if (meeting.description) {
+      html += `<div class="info-card">${escapeHtml(meeting.description)}</div>`;
+    }
+    html += `
+      <div class="info-card">
+        狀態：${STATUS_LABELS[meeting.status] || meeting.status}<br>
+        出席：${my_attendance.attended ? '已簽到' + (my_attendance.checked_in_at ? '（' + new Date(my_attendance.checked_in_at).toLocaleString('zh-TW', { hour12: false }) + '）' : '') : '尚未簽到'}
+      </div>
+    `;
+    if (meeting.notes) {
+      html += `<div class="notes-card"><div class="label">📝 會議紀錄 Minutes</div>${escapeHtml(meeting.notes)}</div>`;
+    }
+    if (!my_attendance.attended && meeting.status !== 'cancelled') {
+      html += `<button type="button" class="submit-btn" id="checkin-btn" style="width:100%;">✅ 簽到 Check in</button>`;
+    }
+    if (my_action_items.length > 0) {
+      html += `<div class="section-title">📋 指派給我的待辦事項</div>`;
+      html += my_action_items.map(it => `
+        <div class="item-row" data-item-id="${it.id}">
+          <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} class="my-item-checkbox">
+          <div class="item-content ${it.status === 'done' ? 'done' : ''}">${escapeHtml(it.content)}</div>
+        </div>
+      `).join('');
+    }
+    el.innerHTML = html;
+
+    const checkinBtn = document.getElementById('checkin-btn');
+    if (checkinBtn) {
+      checkinBtn.addEventListener('click', async () => {
+        checkinBtn.disabled = true;
+        try {
+          await callApi('check_in', { instance_id: instanceId });
+          openMeetingDetail(instanceId);
+        } catch (err) {
+          alert('簽到失敗：' + err.message);
+          checkinBtn.disabled = false;
+        }
+      });
+    }
+    el.querySelectorAll('.my-item-checkbox').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        const itemId = e.target.closest('.item-row').dataset.itemId;
+        e.target.disabled = true;
+        try {
+          await callApi('complete_action_item', { item_id: itemId });
+          openMeetingDetail(instanceId);
+        } catch (err) {
+          alert('更新失敗：' + err.message);
+          e.target.disabled = false;
+          e.target.checked = !e.target.checked;
+        }
+      });
+    });
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+document.getElementById('meeting-detail-back-btn').addEventListener('click', () => showScreen('my-meetings'));
+
+/* ================= MEMBER: MY ACTION ITEMS ================= */
+
+async function loadMyItems() {
+  const el = document.getElementById('my-items-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { action_items } = await callApi('list_my_action_items');
+    renderMyItems(action_items || []);
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderMyItems(items) {
+  const el = document.getElementById('my-items-content');
+  if (items.length === 0) {
+    el.innerHTML = '<div class="empty-state">目前沒有指派給您的待辦事項。</div>';
+    return;
+  }
+  el.innerHTML = items.map(it => `
+    <div class="item-row" data-item-id="${it.id}">
+      <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} class="my-item2-checkbox">
+      <div style="flex:1;">
+        <div class="item-content ${it.status === 'done' ? 'done' : ''}">${escapeHtml(it.content)}</div>
+        <div class="item-meta">${escapeHtml(it.meeting_type_name)} · ${escapeHtml(it.meeting_date || '')}</div>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('.my-item2-checkbox').forEach(cb => {
+    cb.addEventListener('change', async (e) => {
+      const itemId = e.target.closest('.item-row').dataset.itemId;
+      e.target.disabled = true;
+      try {
+        await callApi('complete_action_item', { item_id: itemId });
+        await loadMyItems();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+        e.target.disabled = false;
+        e.target.checked = !e.target.checked;
+      }
+    });
+  });
+}
+
+/* ================= MEETING ADMIN ================= */
+
+function renderAdminHome() {
+  const listEl = document.getElementById('admin-home-list');
+  const items = [
+    { key: 'types', title: '🗂️ 會議類型 Meeting Types', desc: '新增／編輯／刪除會議類型與週期', color: '#6B5FB4' },
+    { key: 'instances', title: '📅 即將到來的會議 Upcoming Meetings', desc: '記錄出席、撰寫紀錄、指派待辦事項', color: '#2E90FA' },
+  ];
+  listEl.innerHTML = '';
+  items.forEach(r => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'menu-card';
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${r.color};">${r.title.split(' ')[0]}</div>
+      <div class="menu-body">
+        <div class="title">${r.title.slice(r.title.indexOf(' ') + 1)}</div>
+        <div class="desc">${r.desc}</div>
+      </div>
+      <div class="menu-arrow">›</div>
+    `;
+    card.addEventListener('click', () => {
+      if (r.key === 'types') { showScreen('admin-types'); loadAdminTypes(); }
+      else if (r.key === 'instances') { showScreen('admin-instances'); loadAdminInstances(); }
+    });
+    listEl.appendChild(card);
+  });
+}
+
+/* ---------- Meeting types ---------- */
+
+let allMeetingTypes = [];
+
+async function loadAdminTypes() {
+  const el = document.getElementById('admin-types-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const [typesRes, groupsRes] = await Promise.all([
+      callApi('list_meeting_types'),
+      callApi('list_groups'),
+    ]);
+    allMeetingTypes = typesRes.meeting_types || [];
+    allGroups = groupsRes.groups || [];
+    renderAdminTypes();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderAdminTypes() {
+  const el = document.getElementById('admin-types-content');
+  let html = '<button type="button" class="submit-btn" id="add-type-btn" style="width:100%; margin-bottom:16px; margin-top:4px;">＋ 新增會議類型</button>';
+  if (allMeetingTypes.length === 0) {
+    html += '<div class="empty-state">尚未建立任何會議類型。</div>';
+  } else {
+    html += allMeetingTypes.map(t => {
+      const recDesc = t.recurrence === 'weekly' ? `每${WEEKDAY_LABELS[t.recurrence_detail?.weekday ?? 0]}`
+        : t.recurrence === 'monthly' ? `每月 ${t.recurrence_detail?.day_of_month ?? '?'} 號`
+        : '單次（' + t.start_date + '）';
+      return `
+        <div class="type-card" data-type-id="${t.id}">
+          <div class="type-card-top">
+            <div class="type-card-name">${escapeHtml(t.name)}</div>
+            ${t.is_active ? '' : '<span class="status-badge cancelled">已停用</span>'}
+          </div>
+          <div class="type-card-meta">
+            ${RECURRENCE_LABELS[t.recurrence]}・${escapeHtml(recDesc)}<br>
+            ${t.group_name ? '群組：' + escapeHtml(t.group_name) : '群組：（未指定）'}${t.place ? ' · ' + escapeHtml(t.place) : ''}
+          </div>
+          <div class="type-card-actions">
+            <button type="button" class="btn-text edit-type-btn">編輯</button>
+            <button type="button" class="btn-text danger delete-type-btn">刪除</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  el.innerHTML = html;
+
+  document.getElementById('add-type-btn').addEventListener('click', () => openTypeForm(null));
+  el.querySelectorAll('.edit-type-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.target.closest('.type-card').dataset.typeId;
+      openTypeForm(allMeetingTypes.find(t => t.id === id));
+    });
+  });
+  el.querySelectorAll('.delete-type-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.target.closest('.type-card').dataset.typeId;
+      const t = allMeetingTypes.find(x => x.id === id);
+      if (!confirm(`確定要刪除「${t.name}」嗎？\n\n此動作將一併刪除相關的會議場次、出席紀錄與待辦事項。`)) return;
+      try {
+        await callApi('delete_meeting_type', { id });
+        await loadAdminTypes();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+      }
+    });
+  });
+}
+
+document.getElementById('admin-types-back-btn').addEventListener('click', () => showScreen('admin-home'));
+
+function openTypeForm(type) {
+  document.getElementById('admin-type-form-title').textContent = type ? '編輯會議類型' : '新增會議類型';
+  const el = document.getElementById('admin-type-form-content');
+  const rec = type?.recurrence || 'weekly';
+  const weekday = type?.recurrence_detail?.weekday ?? 1;
+  const dayOfMonth = type?.recurrence_detail?.day_of_month ?? 1;
+  el.innerHTML = `
+    <div class="field">
+      <label>會議名稱 Name</label>
+      <input type="text" id="tf-name" placeholder="例：道務會議" value="${type ? escapeHtml(type.name) : ''}">
+    </div>
+    <div class="field">
+      <label>說明 Description <span class="hint">選填</span></label>
+      <textarea id="tf-desc">${type ? escapeHtml(type.description || '') : ''}</textarea>
+    </div>
+    <div class="field">
+      <label>頻率 Recurrence</label>
+      <select id="tf-recurrence">
+        <option value="weekly" ${rec === 'weekly' ? 'selected' : ''}>每週 Weekly</option>
+        <option value="monthly" ${rec === 'monthly' ? 'selected' : ''}>每月 Monthly</option>
+        <option value="once" ${rec === 'once' ? 'selected' : ''}>單次 One-time</option>
+      </select>
+    </div>
+    <div class="field" id="tf-weekday-field" style="display:${rec === 'weekly' ? 'block' : 'none'};">
+      <label>星期幾 Weekday</label>
+      <select id="tf-weekday">
+        ${WEEKDAY_LABELS.map((w, i) => `<option value="${i}" ${weekday === i ? 'selected' : ''}>${w}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" id="tf-dom-field" style="display:${rec === 'monthly' ? 'block' : 'none'};">
+      <label>每月幾號 Day of month</label>
+      <input type="number" id="tf-dom" min="1" max="31" value="${dayOfMonth}">
+    </div>
+    <div class="field">
+      <label id="tf-start-label">${rec === 'once' ? '日期 Date' : '開始日期 Start date'}</label>
+      <input type="date" id="tf-start" value="${type?.start_date || ''}">
+    </div>
+    <div class="field" id="tf-end-field" style="display:${rec === 'once' ? 'none' : 'block'};">
+      <label>結束日期 End date <span class="hint">選填，留空表示持續進行</span></label>
+      <input type="date" id="tf-end" value="${type?.end_date || ''}">
+    </div>
+    <div class="field">
+      <label>適用群組 Group <span class="hint">受邀出席者將自動帶入此群組的成員</span></label>
+      <select id="tf-group">
+        <option value="">（未指定）</option>
+        ${allGroups.map(g => `<option value="${g.id}" ${type?.group_id === g.id ? 'selected' : ''}>${escapeHtml(g.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>地點 Place <span class="hint">選填</span></label>
+      <input type="text" id="tf-place" value="${type ? escapeHtml(type.place || '') : ''}">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="tf-active" ${type && type.is_active === false ? '' : 'checked'}>
+      <label for="tf-active" style="margin:0;">啟用中（停用後不再產生新場次）</label>
+    </div>
+    <p class="modal-error" id="tf-error"></p>
+    <button type="button" class="submit-btn" id="tf-save-btn" style="width:100%;">儲存 Save</button>
+  `;
+
+  document.getElementById('tf-recurrence').addEventListener('change', (e) => {
+    const v = e.target.value;
+    document.getElementById('tf-weekday-field').style.display = v === 'weekly' ? 'block' : 'none';
+    document.getElementById('tf-dom-field').style.display = v === 'monthly' ? 'block' : 'none';
+    document.getElementById('tf-end-field').style.display = v === 'once' ? 'none' : 'block';
+    document.getElementById('tf-start-label').textContent = v === 'once' ? '日期 Date' : '開始日期 Start date';
+  });
+
+  document.getElementById('tf-save-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('tf-error');
+    errEl.style.display = 'none';
+    const name = document.getElementById('tf-name').value.trim();
+    const recurrence = document.getElementById('tf-recurrence').value;
+    const start = document.getElementById('tf-start').value;
+    if (!name) { errEl.textContent = '請填寫會議名稱。'; errEl.style.display = 'block'; return; }
+    if (!start) { errEl.textContent = '請選擇日期。'; errEl.style.display = 'block'; return; }
+
+    const recurrence_detail = recurrence === 'weekly' ? { weekday: parseInt(document.getElementById('tf-weekday').value, 10) }
+      : recurrence === 'monthly' ? { day_of_month: parseInt(document.getElementById('tf-dom').value, 10) }
+      : {};
+
+    const btn = document.getElementById('tf-save-btn');
+    btn.disabled = true;
+    try {
+      await callApi('save_meeting_type', {
+        id: type?.id,
+        name,
+        description: document.getElementById('tf-desc').value.trim(),
+        recurrence,
+        recurrence_detail,
+        group_id: document.getElementById('tf-group').value || null,
+        place: document.getElementById('tf-place').value.trim(),
+        start_date: start,
+        end_date: document.getElementById('tf-end').value || null,
+        is_active: document.getElementById('tf-active').checked,
+      });
+      showScreen('admin-types');
+      await loadAdminTypes();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+    }
+  });
+
+  showScreen('admin-type-form');
+}
+
+document.getElementById('admin-type-form-back-btn').addEventListener('click', () => showScreen('admin-types'));
+
+/* ---------- Upcoming instances (record attendance/minutes/items) ---------- */
+
+async function loadAdminInstances() {
+  const el = document.getElementById('admin-instances-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { instances } = await callApi('list_upcoming_instances');
+    renderAdminInstances(instances || []);
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderAdminInstances(instances) {
+  const el = document.getElementById('admin-instances-content');
+  if (instances.length === 0) {
+    el.innerHTML = '<div class="empty-state">未來 60 天內沒有排定的會議。請先在「會議類型」建立至少一個啟用中的類型。</div>';
+    return;
+  }
+  el.innerHTML = instances.map(i => `
+    <div class="meeting-card" data-instance-id="${i.id}">
+      <div class="meeting-card-top">
+        <div class="meeting-card-name">${escapeHtml(i.type_name)}</div>
+        <span class="status-badge ${i.status}">${STATUS_LABELS[i.status] || i.status}</span>
+      </div>
+      <div class="meeting-card-meta">
+        ${escapeHtml(i.meeting_date)}${i.place ? ' · ' + escapeHtml(i.place) : ''}<br>
+        出席 ${i.attended_count} / ${i.invited_count} 人${i.has_notes ? ' · 已有紀錄' : ''}
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('.meeting-card').forEach(card => {
+    card.addEventListener('click', () => openAdminInstanceDetail(card.dataset.instanceId));
+  });
+}
+
+document.getElementById('admin-instances-back-btn').addEventListener('click', () => showScreen('admin-home'));
+
+async function openAdminInstanceDetail(instanceId) {
+  showScreen('admin-instance-detail');
+  const el = document.getElementById('admin-instance-detail-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { instance, type_name, place, attendees, action_items } = await callApi('get_instance_detail', { instance_id: instanceId });
+    document.getElementById('admin-instance-detail-title').textContent = type_name;
+    document.getElementById('admin-instance-detail-date').textContent = instance.meeting_date + (place ? ' · ' + place : '');
+
+    let html = `
+      <div class="field">
+        <label>狀態 Status</label>
+        <select id="id-status">
+          <option value="scheduled" ${instance.status === 'scheduled' ? 'selected' : ''}>尚未召開</option>
+          <option value="completed" ${instance.status === 'completed' ? 'selected' : ''}>已完成</option>
+          <option value="cancelled" ${instance.status === 'cancelled' ? 'selected' : ''}>已取消</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>會議紀錄 Minutes</label>
+        <textarea id="id-notes" style="min-height:100px;">${escapeHtml(instance.notes || '')}</textarea>
+      </div>
+      <button type="button" class="submit-btn" id="id-save-minutes-btn" style="width:100%;">儲存狀態與紀錄</button>
+
+      <div class="section-title">出席 Attendance（${attendees.filter(a => a.attended).length} / ${attendees.length}）</div>
+    `;
+    if (attendees.length === 0) {
+      html += '<div class="empty-note">此會議類型未指定群組，沒有自動邀請的出席者。</div>';
+    } else {
+      html += attendees.map(a => `
+        <div class="attendee-row" data-attendance-id="${a.attendance_id}">
+          <div>
+            <div class="name">${escapeHtml(a.name)}</div>
+            ${a.phone ? '<div class="item-meta">' + escapeHtml(a.phone) + '</div>' : ''}
+          </div>
+          <button type="button" class="btn-text attend-toggle-btn ${a.attended ? 'primary' : ''}">${a.attended ? '✓ 已出席' : '標記出席'}</button>
+        </div>
+      `).join('');
+    }
+
+    html += `<div class="section-title">📋 待辦事項 Action Items</div>`;
+    if (action_items.length === 0) {
+      html += '<div class="empty-note">尚無待辦事項。</div>';
+    } else {
+      html += action_items.map(it => `
+        <div class="item-row" data-item-id="${it.id}">
+          <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} class="admin-item-checkbox">
+          <div style="flex:1;">
+            <div class="item-content ${it.status === 'done' ? 'done' : ''}">${escapeHtml(it.content)}</div>
+            <div class="item-meta">${it.assignee_name ? '指派給：' + escapeHtml(it.assignee_name) : '未指派'}</div>
+          </div>
+          <button type="button" class="btn-text danger delete-item-btn">刪除</button>
+        </div>
+      `).join('');
+    }
+    html += `
+      <div class="add-item-row">
+        <input type="text" id="new-item-content" placeholder="新增待辦事項…">
+        <select id="new-item-assignee" style="max-width:120px;">
+          <option value="">不指派</option>
+          ${attendees.map(a => `<option value="${a.user_id}">${escapeHtml(a.name)}</option>`).join('')}
+        </select>
+      </div>
+      <button type="button" class="btn-text primary" id="add-item-btn" style="width:100%; margin-top:8px;">＋ 新增待辦事項</button>
+    `;
+
+    el.innerHTML = html;
+
+    document.getElementById('id-save-minutes-btn').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        await callApi('save_minutes', {
+          instance_id: instanceId,
+          notes: document.getElementById('id-notes').value,
+          status: document.getElementById('id-status').value,
+        });
+        openAdminInstanceDetail(instanceId);
+      } catch (err) {
+        alert('儲存失敗：' + err.message);
+        e.target.disabled = false;
+      }
+    });
+
+    el.querySelectorAll('.attend-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const row = e.target.closest('.attendee-row');
+        const attendanceId = row.dataset.attendanceId;
+        const currentlyOn = e.target.textContent.includes('已出席');
+        e.target.disabled = true;
+        try {
+          await callApi('mark_attendance', { attendance_id: attendanceId, attended: !currentlyOn });
+          openAdminInstanceDetail(instanceId);
+        } catch (err) {
+          alert('更新失敗：' + err.message);
+          e.target.disabled = false;
+        }
+      });
+    });
+
+    el.querySelectorAll('.admin-item-checkbox').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        const itemId = e.target.closest('.item-row').dataset.itemId;
+        e.target.disabled = true;
+        try {
+          await callApi('update_action_item_status', { item_id: itemId, status: e.target.checked ? 'done' : 'open' });
+          openAdminInstanceDetail(instanceId);
+        } catch (err) {
+          alert('更新失敗：' + err.message);
+          e.target.disabled = false;
+          e.target.checked = !e.target.checked;
+        }
+      });
+    });
+
+    el.querySelectorAll('.delete-item-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        if (!confirm('確定要刪除此待辦事項嗎？')) return;
+        const itemId = e.target.closest('.item-row').dataset.itemId;
+        try {
+          await callApi('delete_action_item', { item_id: itemId });
+          openAdminInstanceDetail(instanceId);
+        } catch (err) {
+          alert('刪除失敗：' + err.message);
+        }
+      });
+    });
+
+    document.getElementById('add-item-btn').addEventListener('click', async (e) => {
+      const content = document.getElementById('new-item-content').value.trim();
+      if (!content) return;
+      const assignee = document.getElementById('new-item-assignee').value || null;
+      e.target.disabled = true;
+      try {
+        await callApi('add_action_item', { instance_id: instanceId, content, assignee_user_id: assignee });
+        openAdminInstanceDetail(instanceId);
+      } catch (err) {
+        alert('新增失敗：' + err.message);
+        e.target.disabled = false;
+      }
+    });
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+document.getElementById('admin-instance-detail-back-btn').addEventListener('click', () => showScreen('admin-instances'));
+
+/* ================= LIFF BOOT ================= */
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'meetings').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    setLoadingText('載入中…');
+    whoami = await callApi('whoami');
+    renderRoleList();
+
+    showScreen('role');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  liff.logout();
+  window.location.reload();
+});
+
+initLiff();
+</script>
+</body>
+</html>
