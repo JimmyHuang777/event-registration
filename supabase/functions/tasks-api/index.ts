@@ -6,9 +6,21 @@
 // verifies it directly with LINE's servers before trusting anything.
 //
 // Actions:
+//   my_altar_teams   — { altar_id } -> { shrine, general } booleans:
+//                       which of that altar's 佛堂/庶務 teams the
+//                       caller is a member of. Used by altar-hub.html
+//                       to decide which tiles to show.
 //   list_tasks       — upcoming task instances in a date range, with
 //                       fill status, place, subtask claim/completion
-//                       state, and the caller's own assignment status
+//                       state, and the caller's own assignment status.
+//                       Optionally scoped to one altar's 佛堂/庶務 team
+//                       via altar_id + altar_team ('shrine'|'general')
+//                       — used by altar-hub.html so a member only sees
+//                       that specific altar's team tasks, not every
+//                       group they belong to. Requires the caller to
+//                       already be in that altar's team's task_group
+//                       (task_group_members); returns an empty list
+//                       otherwise rather than an error.
 //   claim_task       — claim an open slot on one instance
 //   release_task     — cancel the caller's own claim
 //   complete_task    — mark the caller's own assignment 'completed'
@@ -112,6 +124,41 @@ serve(async (req) => {
       .maybeSingle();
 
     switch (action) {
+      // ---- Which of one altar's 佛堂/庶務 teams the caller belongs
+      // to — lets altar-hub.html decide which tiles to show without
+      // guessing from an empty task list (empty could just mean "no
+      // tasks right now", not "not a member"). ----
+      case "my_altar_teams": {
+        const { altar_id } = body;
+        if (!altar_id) return json({ error: "Missing altar_id." }, 400);
+        if (!existingUser) return json({ shrine: false, general: false });
+
+        const { data: groups, error: groupsErr } = await supabase
+          .from("task_groups")
+          .select("id, team")
+          .eq("altar_id", altar_id)
+          .in("team", ["shrine", "general"]);
+        if (groupsErr) return json({ error: groupsErr.message }, 400);
+
+        const groupIds = (groups || []).map((g: any) => g.id);
+        if (groupIds.length === 0) return json({ shrine: false, general: false });
+
+        const { data: memberships, error: memErr } = await supabase
+          .from("task_group_members")
+          .select("group_id")
+          .eq("user_id", existingUser.id)
+          .in("group_id", groupIds);
+        if (memErr) return json({ error: memErr.message }, 400);
+
+        const myGroupIds = new Set((memberships || []).map((r: any) => r.group_id));
+        const shrineGroup = (groups || []).find((g: any) => g.team === "shrine");
+        const generalGroup = (groups || []).find((g: any) => g.team === "general");
+        return json({
+          shrine: !!(shrineGroup && myGroupIds.has(shrineGroup.id)),
+          general: !!(generalGroup && myGroupIds.has(generalGroup.id)),
+        });
+      }
+
       // ---- List upcoming task instances, with fill status ----
       case "list_tasks": {
         const from = body.from_date || todayStr();
@@ -169,7 +216,46 @@ serve(async (req) => {
           }
         }
 
-        const visibleInstances = (instances || []).filter((i: any) => visibleTemplateIds.has(i.template_id));
+        let visibleInstances = (instances || []).filter((i: any) => visibleTemplateIds.has(i.template_id));
+
+        // ---- Optional altar-team scoping (altar-hub.html) ----
+        // When altar_id + altar_team are given, narrow the (already
+        // visibility-filtered) list down to only tasks whose template
+        // is explicitly scoped to that altar's 佛堂/庶務 group — never
+        // public templates, so the same task doesn't show up under
+        // every altar's hub.
+        const { altar_id, altar_team } = body;
+        if (altar_id && altar_team) {
+          const { data: scopeGroup, error: scopeGroupErr } = await supabase
+            .from("task_groups")
+            .select("id")
+            .eq("altar_id", altar_id)
+            .eq("team", altar_team)
+            .maybeSingle();
+          if (scopeGroupErr) return json({ error: scopeGroupErr.message }, 400);
+
+          if (!scopeGroup || !existingUser) {
+            return json({ user: existingUser || null, tasks: [] });
+          }
+
+          const { data: membershipRow, error: membershipErr } = await supabase
+            .from("task_group_members")
+            .select("user_id")
+            .eq("group_id", scopeGroup.id)
+            .eq("user_id", existingUser.id)
+            .maybeSingle();
+          if (membershipErr) return json({ error: membershipErr.message }, 400);
+          if (!membershipRow) return json({ user: existingUser, tasks: [] });
+
+          const { data: scopedLinks, error: scopedLinksErr } = await supabase
+            .from("task_template_groups")
+            .select("template_id")
+            .eq("group_id", scopeGroup.id);
+          if (scopedLinksErr) return json({ error: scopedLinksErr.message }, 400);
+
+          const scopedTemplateIds = new Set((scopedLinks || []).map((r: any) => r.template_id));
+          visibleInstances = visibleInstances.filter((i: any) => scopedTemplateIds.has(i.template_id));
+        }
 
         const instanceIds = visibleInstances.map((i: any) => i.id);
         const templateIds = [...new Set(visibleInstances.map((i: any) => i.template_id))];

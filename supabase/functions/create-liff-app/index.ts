@@ -4,7 +4,7 @@
 // Called by the admin dashboard (Super Admin only). Creates a brand
 // new LINE LIFF app via LINE's API and saves the resulting LIFF ID.
 //
-// Two modes:
+// Three modes:
 //   1. Event mode  — { accessToken, event_id, slug, name }
 //      Endpoint = LIFF_ENDPOINT_BASE_URL + "?event=" + slug
 //      Saves the liffId onto that event's row (events.liff_id).
@@ -12,6 +12,12 @@
 //      Endpoint = LIFF_ENDPOINT_BASE_URL + endpoint_path (e.g. "tasks.html")
 //      Saves the liffId into liff_apps, keyed by "purpose" (e.g. "tasks").
 //      Used for standalone pages that aren't tied to one event.
+//   3. Altar mode — { accessToken, altar_id, name }
+//      Endpoint = LIFF_ENDPOINT_BASE_URL + "altar-hub.html?altar=" + altar_id
+//      Saves the liffId onto that altar's row (altars.liff_id). Same
+//      "one real LIFF app per entity" approach as event mode, so each
+//      壇 gets its own unique, shareable LINE link straight to its
+//      own 天廚／佛堂／庶務 hub.
 //
 // DEPLOY: same as registrant-api / tasks-api — this repo's GitHub
 // Actions workflow deploys it automatically on push.
@@ -80,13 +86,14 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
   try {
-    const { accessToken, event_id, slug, name, purpose, endpoint_path } = await req.json();
+    const { accessToken, event_id, slug, name, purpose, endpoint_path, altar_id } = await req.json();
     if (!accessToken) return json({ error: "Missing accessToken." }, 400);
 
     const isEventMode = !!event_id;
     const isGenericMode = !!purpose;
-    if (!isEventMode && !isGenericMode) {
-      return json({ error: "Provide either event_id+slug (event mode) or purpose+endpoint_path (generic mode)." }, 400);
+    const isAltarMode = !!altar_id;
+    if (!isEventMode && !isGenericMode && !isAltarMode) {
+      return json({ error: "Provide event_id+slug (event mode), purpose+endpoint_path (generic mode), or altar_id (altar mode)." }, 400);
     }
     if (isEventMode && !slug) return json({ error: "Missing slug." }, 400);
     if (isGenericMode && !endpoint_path) return json({ error: "Missing endpoint_path." }, 400);
@@ -111,6 +118,8 @@ serve(async (req) => {
 
     const endpointUrl = isEventMode
       ? LIFF_ENDPOINT_BASE_URL.replace(/\/?$/, "/") + "?event=" + encodeURIComponent(slug)
+      : isAltarMode
+      ? LIFF_ENDPOINT_BASE_URL.replace(/\/?$/, "/") + "altar-hub.html?altar=" + encodeURIComponent(altar_id)
       : LIFF_ENDPOINT_BASE_URL.replace(/\/?$/, "/") + endpoint_path.replace(/^\/+/, "");
 
     const channelAccessToken = await getLineChannelAccessToken();
@@ -118,6 +127,9 @@ serve(async (req) => {
 
     if (isEventMode) {
       const { error: updateErr } = await supabase.from("events").update({ liff_id: liffId }).eq("id", event_id);
+      if (updateErr) return json({ error: updateErr.message }, 400);
+    } else if (isAltarMode) {
+      const { error: updateErr } = await supabase.from("altars").update({ liff_id: liffId }).eq("id", altar_id);
       if (updateErr) return json({ error: updateErr.message }, 400);
     } else {
       const { error: upsertErr } = await supabase
