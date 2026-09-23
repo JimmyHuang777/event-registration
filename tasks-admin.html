@@ -94,6 +94,9 @@
   .group-chip.checked { background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark); }
   .group-chip input { width: 14px; height: 14px; }
   .no-groups-note { font-size: 12.5px; color: var(--ink-soft); }
+  .section-title { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 14px 0 6px; }
+  .section-title:empty { display: none; }
+  .section-title:first-child { margin-top: 0; }
 
   .preset-row { display: flex; gap: 8px; align-items: center; }
   .preset-row select { flex: 1; }
@@ -475,18 +478,45 @@ function addSubtaskRow(prefill) {
 }
 document.getElementById('add-subtask-btn').addEventListener('click', () => addSubtaskRow());
 
+function groupChipHTML(g, checkedGroupIds) {
+  return `
+    <label class="group-chip ${checkedGroupIds.has(g.id) ? 'checked' : ''}">
+      <input type="checkbox" value="${g.id}" ${checkedGroupIds.has(g.id) ? 'checked' : ''}>
+      ${escapeHtml(g.name)}
+    </label>
+  `;
+}
+
+// Sectioned by altar (壇) so a leader can find their own altar's
+// group instead of hunting through a flat, ever-growing list — and
+// so it's obvious which groups belong to which altar, since several
+// altars can each have a "...・佛堂" / "...・庶務" group with a
+// similar-looking name.
 function renderGroupChips(checkedGroupIds) {
   const wrap = document.getElementById('group-chip-list');
   if (allGroups.length === 0) {
     wrap.innerHTML = '<span class="no-groups-note">尚未建立任何群組。</span>';
     return;
   }
-  wrap.innerHTML = allGroups.map(g => `
-    <label class="group-chip ${checkedGroupIds.has(g.id) ? 'checked' : ''}">
-      <input type="checkbox" value="${g.id}" ${checkedGroupIds.has(g.id) ? 'checked' : ''}>
-      ${escapeHtml(g.name)}
-    </label>
-  `).join('');
+
+  const byAltar = {};
+  const noAltar = [];
+  allGroups.forEach(g => {
+    if (g.altar_id) { (byAltar[g.altar_id] = byAltar[g.altar_id] || { name: g.altars?.name || '（未知的壇）', groups: [] }).groups.push(g); }
+    else noAltar.push(g);
+  });
+
+  let html = '';
+  Object.values(byAltar).forEach(altar => {
+    html += `<div class="section-title">⛩️ ${escapeHtml(altar.name)}</div>
+      <div class="group-chip-list">${altar.groups.map(g => groupChipHTML(g, checkedGroupIds)).join('')}</div>`;
+  });
+  if (noAltar.length > 0) {
+    html += `<div class="section-title">${Object.keys(byAltar).length > 0 ? '其他 Other' : ''}</div>
+      <div class="group-chip-list">${noAltar.map(g => groupChipHTML(g, checkedGroupIds)).join('')}</div>`;
+  }
+  wrap.innerHTML = html;
+
   wrap.querySelectorAll('.group-chip input').forEach(cb => {
     cb.addEventListener('change', () => cb.closest('.group-chip').classList.toggle('checked', cb.checked));
   });
@@ -572,6 +602,10 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     .filter(s => s.title);
 
   const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
+
+  if (group_ids.length === 0) {
+    if (!confirm('您尚未勾選任何群組限定，這個工作將公開給「所有人」看到與認領，包括其他壇的成員。\n\n確定要這樣儲存嗎？')) return;
+  }
 
   const payload = {
     id: editingId,

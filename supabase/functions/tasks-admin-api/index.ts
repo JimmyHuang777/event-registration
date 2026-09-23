@@ -171,9 +171,13 @@ serve(async (req) => {
 
       // ---- All groups, for the checkbox list ----
       case "list_groups": {
+        // altar_id/team/altars(name) let tasks-admin.html section the
+        // checkbox list by altar, so a leader picks their own altar's
+        // group instead of hunting through a flat, ever-growing list
+        // (or worse, leaving it unchecked and going public by mistake).
         const { data, error } = await supabase
           .from("task_groups")
-          .select("id, name")
+          .select("id, name, altar_id, team, altars ( name )")
           .order("created_at", { ascending: true });
         if (error) return json({ error: error.message }, 400);
         return json({ groups: data || [] });

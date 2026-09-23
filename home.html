@@ -187,8 +187,9 @@ async function renderMenu(menuData) {
 
   const wanted = MENU_ENTRIES.filter(e => menuData[e.flag]);
   const events = menuData.events || [];
+  const altars = menuData.altars || [];
 
-  if (wanted.length === 0 && events.length === 0) {
+  if (wanted.length === 0 && events.length === 0 && altars.length === 0) {
     listEl.innerHTML = '<div class="empty-state">目前沒有可以使用的功能。<br>若您認為這是誤判，請聯繫管理員將您加入相關群組。</div>';
     return;
   }
@@ -233,6 +234,26 @@ async function renderMenu(menuData) {
         <div class="menu-body">
           <div class="title">${escapeHtml(ev.name)}</div>
           <div class="desc">${escapeHtml(metaBits || '點選報名')}</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      `;
+      listEl.appendChild(card);
+    });
+  }
+
+  // ---- Altars the caller belongs to on any team (each has its own
+  // unique liff_id already, same as events) ----
+  if (altars.length > 0) {
+    appendSectionLabel(listEl, '壇務 Altars', lastSection);
+    altars.forEach(a => {
+      const card = document.createElement('a');
+      card.className = 'menu-card';
+      card.href = 'https://liff.line.me/' + a.liff_id;
+      card.innerHTML = `
+        <div class="menu-icon" style="background:#D97706;">⛩️</div>
+        <div class="menu-body">
+          <div class="title">${escapeHtml(a.name)}</div>
+          <div class="desc">天廚／佛堂／庶務</div>
         </div>
         <div class="menu-arrow">›</div>
       `;

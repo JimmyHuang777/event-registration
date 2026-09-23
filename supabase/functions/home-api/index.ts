@@ -19,6 +19,12 @@
 //     working LINE registration link and is visible to this member
 //     — same "no rows = public" group-visibility rule as job
 //     templates and flows, via event_groups.
+//   - one entry per 壇 (altar) the caller belongs to on ANY of its
+//     three teams (天廚 via altar_team_members, 佛堂/庶務 via
+//     task_group_members) that already has its own LINE link — same
+//     "each has its own unique liff_id" pattern as events, since
+//     every altar's hub (altar-hub.html) is its own distinct LIFF
+//     app, not a shared "purpose".
 //
 // This function only decides WHICH entries to show (booleans) — the
 // actual liff_id for each fixed-purpose page is looked up by
@@ -205,6 +211,30 @@ serve(async (req) => {
       })
       .map((e: any) => ({ id: e.id, name: e.name, event_date: e.event_date, location: e.location, liff_id: e.liff_id }));
 
+    // ---- Every altar the caller belongs to on any of its 3 teams,
+    // that already has its own LINE link ----
+    const [{ data: kitchenMemberships }, { data: shrineGeneralGroups }] = await Promise.all([
+      supabase.from("altar_team_members").select("altar_id").eq("team", "kitchen").eq("user_id", existingUser.id),
+      myGroupIds.size > 0
+        ? supabase.from("task_groups").select("id, altar_id").in("id", [...myGroupIds]).not("altar_id", "is", null)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const myAltarIds = new Set<string>([
+      ...(kitchenMemberships || []).map((r: any) => r.altar_id),
+      ...(shrineGeneralGroups || []).map((r: any) => r.altar_id),
+    ]);
+
+    let altars: any[] = [];
+    if (myAltarIds.size > 0) {
+      const { data: altarRows } = await supabase
+        .from("altars")
+        .select("id, name, liff_id")
+        .in("id", [...myAltarIds]);
+      altars = (altarRows || [])
+        .filter((a: any) => a.liff_id)
+        .map((a: any) => ({ id: a.id, name: a.name, liff_id: a.liff_id }));
+    }
+
     return json({
       user: existingUser,
       is_job_admin: isJobAdmin,
@@ -213,6 +243,7 @@ serve(async (req) => {
       show_tasks: showTasks,
       show_flows: showFlows,
       events,
+      altars,
     });
   } catch (err) {
     console.error(err);
