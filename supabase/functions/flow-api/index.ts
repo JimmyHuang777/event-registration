@@ -56,10 +56,36 @@ async function verifyLineToken(idToken: string) {
   return data as { sub: string; name?: string; picture?: string };
 }
 
+// A flow with altar_id set (activity_flows.altar_id — the Dashboard's
+// "所屬壇 Altar" picker) is ALSO visible to anyone on a team at that
+// altar or a descendant of it — an additional way in, on top of the
+// group rule below, so a top altar's flow sheet automatically shows
+// up for every altar under it.
+async function isAltarScopeVisible(altarId: string | null, existingUser: { id: string } | null) {
+  if (!altarId) return false;
+  if (!existingUser) return false;
+  const { data, error } = await supabase.rpc("is_altar_visible_to_user", {
+    p_altar_id: altarId,
+    p_user_id: existingUser.id,
+  });
+  if (error) return false;
+  return !!data;
+}
+
 // A flow with no rows in activity_flow_groups is public. A flow WITH
 // rows there is only visible to someone who belongs to at least one
 // of those groups. Same rule/shape as tasks-api's isTemplateVisible.
 async function isFlowVisible(flowId: string, existingUser: { id: string } | null) {
+  const { data: flow } = await supabase
+    .from("activity_flows")
+    .select("altar_id")
+    .eq("id", flowId)
+    .maybeSingle();
+
+  if (flow?.altar_id && (await isAltarScopeVisible(flow.altar_id, existingUser))) {
+    return true;
+  }
+
   const { data: groupLinks } = await supabase
     .from("activity_flow_groups")
     .select("group_id")
@@ -113,6 +139,19 @@ serve(async (req) => {
         let visibleFlowIds = new Set(allFlowIds);
 
         if (allFlowIds.length > 0) {
+          // altar_id already came back on `flows` (select("*") above),
+          // so no extra query needed for the altar-scope map.
+          const altarIdByFlow: Record<string, string> = {};
+          (flows || []).forEach((f: any) => { if (f.altar_id) altarIdByFlow[f.id] = f.altar_id; });
+
+          let visibleAltarIds = new Set<string>();
+          if (existingUser) {
+            const distinctAltarIds = [...new Set(Object.values(altarIdByFlow))];
+            for (const aid of distinctAltarIds) {
+              if (await isAltarScopeVisible(aid, existingUser)) visibleAltarIds.add(aid);
+            }
+          }
+
           const { data: flowGroups, error: fgErr } = await supabase
             .from("activity_flow_groups")
             .select("flow_id, group_id")
@@ -120,24 +159,24 @@ serve(async (req) => {
           if (fgErr) return json({ error: fgErr.message }, 400);
 
           const restrictedFlowIds = new Set((flowGroups || []).map((r: any) => r.flow_id));
-          if (restrictedFlowIds.size > 0) {
-            let myGroupIds = new Set<string>();
-            if (existingUser) {
-              const { data: myGroups, error: mgErr } = await supabase
-                .from("task_group_members")
-                .select("group_id")
-                .eq("user_id", existingUser.id);
-              if (mgErr) return json({ error: mgErr.message }, 400);
-              myGroupIds = new Set((myGroups || []).map((r: any) => r.group_id));
-            }
-            visibleFlowIds = new Set(
-              allFlowIds.filter((fid: string) => {
-                if (!restrictedFlowIds.has(fid)) return true; // public flow
-                const groupsForFlow = (flowGroups || []).filter((r: any) => r.flow_id === fid);
-                return groupsForFlow.some((r: any) => myGroupIds.has(r.group_id));
-              })
-            );
+          let myGroupIds = new Set<string>();
+          if (existingUser) {
+            const { data: myGroups, error: mgErr } = await supabase
+              .from("task_group_members")
+              .select("group_id")
+              .eq("user_id", existingUser.id);
+            if (mgErr) return json({ error: mgErr.message }, 400);
+            myGroupIds = new Set((myGroups || []).map((r: any) => r.group_id));
           }
+          visibleFlowIds = new Set(
+            allFlowIds.filter((fid: string) => {
+              const aid = altarIdByFlow[fid];
+              if (aid && visibleAltarIds.has(aid)) return true; // visible via altar hierarchy
+              if (!restrictedFlowIds.has(fid)) return true; // public flow
+              const groupsForFlow = (flowGroups || []).filter((r: any) => r.flow_id === fid);
+              return groupsForFlow.some((r: any) => myGroupIds.has(r.group_id));
+            })
+          );
         }
 
         const result = (flows || []).filter((f: any) => visibleFlowIds.has(f.id));

@@ -95,6 +95,25 @@ function anyVisible(
   return groupLinks.some((r) => myGroupIds.has(r.group_id));
 }
 
+// A task template / event / flow with altar_id set is ALSO visible to
+// anyone on a team at that altar or a descendant of it — an
+// additional OR-branch alongside the group rule above, so a top
+// altar's content automatically shows up for every altar under it.
+// Returns the set of distinct altar_ids (out of `altarIds`) that
+// `existingUser` can actually see, one RPC call per distinct id.
+async function visibleAltarIdSet(altarIds: string[], existingUser: { id: string } | null) {
+  const result = new Set<string>();
+  if (!existingUser) return result;
+  for (const aid of new Set(altarIds)) {
+    const { data, error } = await supabase.rpc("is_altar_visible_to_user", {
+      p_altar_id: aid,
+      p_user_id: existingUser.id,
+    });
+    if (!error && data) result.add(aid);
+  }
+  return result;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -150,10 +169,11 @@ serve(async (req) => {
     const myGroupIds = new Set((myGroupRows || []).map((r: any) => r.group_id));
 
     // ---- Any task template visible to this member? ----
-    const { data: templates } = await supabase.from("task_templates").select("id").eq("is_active", true);
+    const { data: templates } = await supabase.from("task_templates").select("id, altar_id").eq("is_active", true);
     const templateIds = (templates || []).map((t: any) => t.id);
-    let showTasks = false;
-    if (templateIds.length > 0) {
+    const templateAltarIds = (templates || []).map((t: any) => t.altar_id).filter(Boolean);
+    let showTasks = templateAltarIds.length > 0 && (await visibleAltarIdSet(templateAltarIds, existingUser)).size > 0;
+    if (!showTasks && templateIds.length > 0) {
       const { data: templateGroups } = await supabase
         .from("task_template_groups")
         .select("template_id, group_id")
@@ -166,10 +186,11 @@ serve(async (req) => {
     }
 
     // ---- Any activity flow visible to this member? ----
-    const { data: flows } = await supabase.from("activity_flows").select("id").eq("is_active", true);
+    const { data: flows } = await supabase.from("activity_flows").select("id, altar_id").eq("is_active", true);
     const flowIds = (flows || []).map((f: any) => f.id);
-    let showFlows = false;
-    if (flowIds.length > 0) {
+    const flowAltarIds = (flows || []).map((f: any) => f.altar_id).filter(Boolean);
+    let showFlows = flowAltarIds.length > 0 && (await visibleAltarIdSet(flowAltarIds, existingUser)).size > 0;
+    if (!showFlows && flowIds.length > 0) {
       const { data: flowGroups } = await supabase
         .from("activity_flow_groups")
         .select("flow_id, group_id")
@@ -186,7 +207,7 @@ serve(async (req) => {
     // templates and flows, via event_groups). ----
     const { data: eventRows } = await supabase
       .from("events")
-      .select("id, name, event_date, location, liff_id")
+      .select("id, name, event_date, location, liff_id, altar_id")
       .eq("is_active", true)
       .order("event_date", { ascending: true });
     const linkedEvents = (eventRows || []).filter((e: any) => e.liff_id && /^\d+-[A-Za-z0-9]+$/.test(e.liff_id));
@@ -203,8 +224,12 @@ serve(async (req) => {
       });
     }
 
+    const eventAltarIds = linkedEvents.map((e: any) => e.altar_id).filter(Boolean);
+    const visibleEventAltarIds = eventAltarIds.length > 0 ? await visibleAltarIdSet(eventAltarIds, existingUser) : new Set<string>();
+
     const events = linkedEvents
       .filter((e: any) => {
+        if (e.altar_id && visibleEventAltarIds.has(e.altar_id)) return true; // visible via altar hierarchy
         const groups = eventGroupsByEvent[e.id];
         if (!groups || groups.length === 0) return true; // public event
         return groups.some((gid) => myGroupIds.has(gid));

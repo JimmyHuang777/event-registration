@@ -83,7 +83,36 @@ function todayStr() {
 // at least one of those groups. Reused by every write action so a
 // group restriction can't be bypassed by calling an action directly
 // with a known instance_id.
+//
+// Separately, a template can also carry altar_id (task_templates.altar_id
+// — set from the Dashboard/tasks-admin's "所屬壇 Altar" picker). That's
+// an ADDITIONAL way in, not a replacement for the group rule above: if
+// EITHER the group check passes OR the caller is on a team at that
+// altar (or a descendant of it — see is_altar_visible_to_user), the
+// template is visible. So a top altar's job automatically shows up for
+// every altar under it, without anyone re-saving the template's groups.
+async function isAltarScopeVisible(altarId: string | null, existingUser: { id: string } | null) {
+  if (!altarId) return false;
+  if (!existingUser) return false;
+  const { data, error } = await supabase.rpc("is_altar_visible_to_user", {
+    p_altar_id: altarId,
+    p_user_id: existingUser.id,
+  });
+  if (error) return false;
+  return !!data;
+}
+
 async function isTemplateVisible(templateId: string, existingUser: { id: string } | null) {
+  const { data: template } = await supabase
+    .from("task_templates")
+    .select("altar_id")
+    .eq("id", templateId)
+    .maybeSingle();
+
+  if (template?.altar_id && (await isAltarScopeVisible(template.altar_id, existingUser))) {
+    return true;
+  }
+
   const { data: groupLinks } = await supabase
     .from("task_template_groups")
     .select("group_id")
@@ -183,11 +212,31 @@ serve(async (req) => {
         // A template with no rows in task_template_groups is public
         // (visible to everyone). A template WITH rows there is only
         // visible to someone who belongs to at least one of those
-        // groups.
+        // groups. Separately, a template with altar_id set is ALSO
+        // visible to anyone on a team at that altar or a descendant of
+        // it (task_templates.altar_id — additional OR-branch, doesn't
+        // replace the group rule).
         const allTemplateIds = [...new Set((instances || []).map((i: any) => i.template_id))];
         let visibleTemplateIds = new Set(allTemplateIds);
 
         if (allTemplateIds.length > 0) {
+          const { data: templateRows, error: trErr } = await supabase
+            .from("task_templates")
+            .select("id, altar_id")
+            .in("id", allTemplateIds);
+          if (trErr) return json({ error: trErr.message }, 400);
+
+          const altarIdByTemplate: Record<string, string> = {};
+          (templateRows || []).forEach((r: any) => { if (r.altar_id) altarIdByTemplate[r.id] = r.altar_id; });
+
+          let visibleAltarIds = new Set<string>();
+          if (existingUser) {
+            const distinctAltarIds = [...new Set(Object.values(altarIdByTemplate))];
+            for (const aid of distinctAltarIds) {
+              if (await isAltarScopeVisible(aid, existingUser)) visibleAltarIds.add(aid);
+            }
+          }
+
           const { data: templateGroups, error: tgErr } = await supabase
             .from("task_template_groups")
             .select("template_id, group_id")
@@ -195,25 +244,25 @@ serve(async (req) => {
           if (tgErr) return json({ error: tgErr.message }, 400);
 
           const restrictedTemplateIds = new Set((templateGroups || []).map((r: any) => r.template_id));
-          if (restrictedTemplateIds.size > 0) {
-            let myGroupIds = new Set<string>();
-            if (existingUser) {
-              const { data: myGroups, error: mgErr } = await supabase
-                .from("task_group_members")
-                .select("group_id")
-                .eq("user_id", existingUser.id);
-              if (mgErr) return json({ error: mgErr.message }, 400);
-              myGroupIds = new Set((myGroups || []).map((r: any) => r.group_id));
-            }
-
-            visibleTemplateIds = new Set(
-              allTemplateIds.filter((tid: string) => {
-                if (!restrictedTemplateIds.has(tid)) return true; // public template
-                const groupsForTemplate = (templateGroups || []).filter((r: any) => r.template_id === tid);
-                return groupsForTemplate.some((r: any) => myGroupIds.has(r.group_id));
-              })
-            );
+          let myGroupIds = new Set<string>();
+          if (existingUser) {
+            const { data: myGroups, error: mgErr } = await supabase
+              .from("task_group_members")
+              .select("group_id")
+              .eq("user_id", existingUser.id);
+            if (mgErr) return json({ error: mgErr.message }, 400);
+            myGroupIds = new Set((myGroups || []).map((r: any) => r.group_id));
           }
+
+          visibleTemplateIds = new Set(
+            allTemplateIds.filter((tid: string) => {
+              const aid = altarIdByTemplate[tid];
+              if (aid && visibleAltarIds.has(aid)) return true; // visible via altar hierarchy
+              if (!restrictedTemplateIds.has(tid)) return true; // public template
+              const groupsForTemplate = (templateGroups || []).filter((r: any) => r.template_id === tid);
+              return groupsForTemplate.some((r: any) => myGroupIds.has(r.group_id));
+            })
+          );
         }
 
         let visibleInstances = (instances || []).filter((i: any) => visibleTemplateIds.has(i.template_id));
