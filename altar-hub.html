@@ -225,7 +225,7 @@ let idToken = null;
 let lineProfile = null;
 let currentAltar = null; // { id, name }
 let kitchenRole = null;  // 'leader' | 'member' | null
-let myTeams = { shrine: false, general: false };
+let myTeams = { shrine: false, general: false, resident: false };
 let allRecipes = [];
 let allMenus = [];
 let teamTasksTeam = null; // 'shrine' | 'general' — which team-tasks screen is open
@@ -274,7 +274,7 @@ function escapeHtml(str) { const div = document.createElement('div'); div.textCo
 
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', none: '' };
 const KITCHEN_STATUS_LABELS = { open: '尚未認領', claimed: '已認領', done: '已完成' };
-const TEAM_TILE_LABELS = { shrine: { icon: '🙏', title: '佛堂', color: '#2563A8' }, general: { icon: '🧹', title: '庶務', color: '#6B7280' } };
+const TEAM_TILE_LABELS = { shrine: { icon: '🙏', title: '佛堂', color: '#2563A8' }, general: { icon: '🧹', title: '庶務', color: '#6B7280' }, resident: { icon: '🏠', title: '住壇', color: '#6B5FB4' } };
 
 /* ---------- Hub (altar home) ---------- */
 
@@ -291,9 +291,12 @@ function renderHub() {
   if (myTeams.general) {
     tiles.push({ key: 'general', icon: '🧹', title: '庶務', desc: '查看並認領庶務工作', color: '#6B7280' });
   }
+  if (myTeams.resident) {
+    tiles.push({ key: 'resident', icon: '🏠', title: '住壇', desc: '查看並認領住壇工作', color: '#6B5FB4' });
+  }
 
   if (tiles.length === 0) {
-    listEl.innerHTML = '<div class="empty-state">您尚未被加入這個壇的天廚／佛堂／庶務任何一組，請聯繫壇務管理員。</div>';
+    listEl.innerHTML = '<div class="empty-state">您尚未被加入這個壇的天廚／佛堂／庶務／住壇任何一組，請聯繫壇務管理員。</div>';
     return;
   }
 
@@ -849,7 +852,7 @@ async function initLiff() {
     ]);
     const myKitchenAltar = (kitchenRes.altars || []).find(a => a.id === currentAltar.id);
     kitchenRole = myKitchenAltar ? myKitchenAltar.role : null;
-    myTeams = { shrine: !!teamsRes.shrine, general: !!teamsRes.general };
+    myTeams = { shrine: !!teamsRes.shrine, general: !!teamsRes.general, resident: !!teamsRes.resident };
 
     setLoadingText('步驟 5/5：載入中…');
     showScreen('hub');

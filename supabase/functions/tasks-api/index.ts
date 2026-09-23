@@ -153,24 +153,24 @@ serve(async (req) => {
       .maybeSingle();
 
     switch (action) {
-      // ---- Which of one altar's 佛堂/庶務 teams the caller belongs
-      // to — lets altar-hub.html decide which tiles to show without
-      // guessing from an empty task list (empty could just mean "no
-      // tasks right now", not "not a member"). ----
+      // ---- Which of one altar's 佛堂/庶務/住壇 teams the caller
+      // belongs to — lets altar-hub.html decide which tiles to show
+      // without guessing from an empty task list (empty could just
+      // mean "no tasks right now", not "not a member"). ----
       case "my_altar_teams": {
         const { altar_id } = body;
         if (!altar_id) return json({ error: "Missing altar_id." }, 400);
-        if (!existingUser) return json({ shrine: false, general: false });
+        if (!existingUser) return json({ shrine: false, general: false, resident: false });
 
         const { data: groups, error: groupsErr } = await supabase
           .from("task_groups")
           .select("id, team")
           .eq("altar_id", altar_id)
-          .in("team", ["shrine", "general"]);
+          .in("team", ["shrine", "general", "resident"]);
         if (groupsErr) return json({ error: groupsErr.message }, 400);
 
         const groupIds = (groups || []).map((g: any) => g.id);
-        if (groupIds.length === 0) return json({ shrine: false, general: false });
+        if (groupIds.length === 0) return json({ shrine: false, general: false, resident: false });
 
         const { data: memberships, error: memErr } = await supabase
           .from("task_group_members")
@@ -182,9 +182,11 @@ serve(async (req) => {
         const myGroupIds = new Set((memberships || []).map((r: any) => r.group_id));
         const shrineGroup = (groups || []).find((g: any) => g.team === "shrine");
         const generalGroup = (groups || []).find((g: any) => g.team === "general");
+        const residentGroup = (groups || []).find((g: any) => g.team === "resident");
         return json({
           shrine: !!(shrineGroup && myGroupIds.has(shrineGroup.id)),
           general: !!(generalGroup && myGroupIds.has(generalGroup.id)),
+          resident: !!(residentGroup && myGroupIds.has(residentGroup.id)),
         });
       }
 
