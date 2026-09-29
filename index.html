@@ -360,7 +360,28 @@ const STATUS_LABELS = {
 
 function getEventSlugFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('event');
+  const direct = params.get('event');
+  if (direct) return direct;
+
+  // Shared LIFF app: every event now opens through the SAME LIFF app
+  // (see create-liff-app / cleanup notes), so the "which event is
+  // this" info isn't baked into the registered endpoint — it's
+  // appended to the liff.line.me link itself, e.g.
+  // "https://liff.line.me/<id>?event=<slug>". LINE forwards anything
+  // appended that way as an opaque `liff.state` query param instead
+  // of passing it straight through, so it has to be unpacked here.
+  // See: https://developers.line.biz/en/docs/liff/opening-liff-app/
+  const state = params.get('liff.state');
+  if (state) {
+    try {
+      const decoded = decodeURIComponent(state);
+      const queryPart = decoded.includes('?') ? decoded.split('?').slice(1).join('?') : decoded;
+      return new URLSearchParams(queryPart).get('event');
+    } catch (err) {
+      return null;
+    }
+  }
+  return null;
 }
 
 function escapeHtml(str) {
