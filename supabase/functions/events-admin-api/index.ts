@@ -116,6 +116,35 @@ async function createLiffApp(channelAccessToken: string, endpointUrl: string, de
   return data.liffId as string;
 }
 
+// Gets the one shared "events" LIFF app, creating it the first time
+// it's ever needed. Every event uses this same liffId forever — the
+// specific event is told apart by ?event=<slug> on the share link
+// (see create-liff-app's fuller comment on why). This keeps event
+// creation from ever consuming one of LINE's 30-per-channel slots.
+async function getOrCreateSharedLiffApp(
+  sharedPurpose: "events_shared" | "altar_hub_shared",
+  endpointPath: string,
+  description: string,
+): Promise<string> {
+  const { data: existing } = await supabase
+    .from("liff_apps")
+    .select("liff_id")
+    .eq("purpose", sharedPurpose)
+    .maybeSingle();
+  if (existing?.liff_id) return existing.liff_id as string;
+
+  const endpointUrl = LIFF_ENDPOINT_BASE_URL.replace(/\/?$/, "/") + endpointPath + "?v=" + Date.now();
+  const channelAccessToken = await getLineChannelAccessToken();
+  const liffId = await createLiffApp(channelAccessToken, endpointUrl, description);
+
+  const { error: upsertErr } = await supabase
+    .from("liff_apps")
+    .upsert({ purpose: sharedPurpose, liff_id: liffId, updated_at: new Date().toISOString() }, { onConflict: "purpose" });
+  if (upsertErr) throw new Error(upsertErr.message);
+
+  return liffId;
+}
+
 const SLUG_RE = /^[a-z0-9-]+$/;
 
 // Replace an event's group links with whatever was submitted — a
@@ -254,16 +283,17 @@ serve(async (req) => {
 
         await syncEventGroups(newEvent.id, groupIds);
 
-        // Best-effort: auto-create the registration LIFF link. A
-        // failure here does NOT fail event creation — the event is
+        // Best-effort: point this event at the shared "events" LIFF
+        // app (see getOrCreateSharedLiffApp — same one every event
+        // uses, created once ever; the event is told apart by
+        // ?event=<slug> on the share link, not by a dedicated app).
+        // A failure here does NOT fail event creation — the event is
         // just left without a link, same as an event created before
         // this existed, and can still be generated from the
         // dashboard's "重新產生連結" button.
         let liffWarning: string | null = null;
         try {
-          const endpointUrl = LIFF_ENDPOINT_BASE_URL.replace(/\/?$/, "/") + "?event=" + encodeURIComponent(slug);
-          const channelAccessToken = await getLineChannelAccessToken();
-          const liffId = await createLiffApp(channelAccessToken, endpointUrl, name);
+          const liffId = await getOrCreateSharedLiffApp("events_shared", "", "活動報名 Event Registration");
           const { error: liffUpdateErr } = await supabase.from("events").update({ liff_id: liffId }).eq("id", newEvent.id);
           if (liffUpdateErr) liffWarning = "活動已建立，但儲存 LINE 連結時發生錯誤：" + liffUpdateErr.message;
           else newEvent.liff_id = liffId;
@@ -287,6 +317,9 @@ serve(async (req) => {
       case "delete_event": {
         const { id } = body;
         if (!id) return json({ error: "Missing id." }, 400);
+        // Note: no LIFF app to clean up here — every event shares the
+        // ONE "events" LIFF app (see getOrCreateSharedLiffApp), so
+        // deleting one event's row must never touch it.
         const { error } = await supabase.from("events").delete().eq("id", id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });

@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>活動報名 Event Registration</title>
+<meta property="og:title" content="活動報名 Event Registration">
+<meta property="og:description" content="請點此完成報名">
+<meta property="og:type" content="website">
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root {
+    --line-green: #06C755;
+    --line-green-dark: #05A648;
+    --ink: #1A1A1A;
+    --ink-soft: #6B6F76;
+    --paper: #FFFFFF;
+    --field-bg: #F3F4F6;
+    --error: #E0453C;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #EDEEF1;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+    color: var(--ink);
+  }
+
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    background: var(--line-green);
+    color: white;
+    padding: 28px 20px 40px;
+  }
+
+  .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  .header .event-meta { margin: 8px 0 0; font-size: 13.5px; opacity: 0.92; line-height: 1.5; }
+
+  .profile-card {
+    background: var(--paper);
+    border-radius: var(--radius);
+    margin: -24px 16px 0;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    position: relative;
+    z-index: 2;
+  }
+
+  .profile-card img {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--field-bg); object-fit: cover; flex-shrink: 0;
+  }
+
+  .profile-card .name { font-size: 15px; font-weight: 600; }
+  .profile-card .sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  .section-title {
+    font-size: 13px; font-weight: 700; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.03em;
+    margin: 28px 20px 10px;
+  }
+
+  #existing-section { padding-top: 4px; }
+
+  .existing-card {
+    background: var(--field-bg); border-radius: 12px; margin: 0 20px 10px; padding: 14px 16px;
+  }
+  .existing-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .existing-card-name { font-size: 15px; font-weight: 700; }
+  .existing-card-sub { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+  .existing-card-details { font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6; }
+  .existing-card-actions { display: flex; gap: 16px; margin-top: 10px; }
+
+  .existing-status-badge {
+    font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+  }
+  .existing-status-badge.pending { background: #FBF3E4; color: #B7791F; }
+  .existing-status-badge.confirmed { background: #E9F1FA; color: #2563A8; }
+  .existing-status-badge.checked_in { background: #E4F8EC; color: var(--line-green-dark); }
+  .existing-status-badge.cancelled { background: #FBEAE8; color: var(--error); }
+
+  .status-banner {
+    margin: 20px 20px 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    display: none;
+  }
+
+  .status-banner.show { display: block; }
+  .status-banner.confirmed { background: #E9F1FA; color: #2563A8; }
+  .status-banner.pending { background: #FBF3E4; color: #B7791F; }
+  .status-banner.checked_in { background: #E4F8EC; color: var(--line-green-dark); }
+  .status-banner.cancelled { background: #FBEAE8; color: var(--error); }
+
+  form { padding: 0 0 24px; flex: 1; }
+
+  .attendee-block {
+    margin: 0 20px 16px; padding: 16px; border: 1.5px solid var(--field-bg); border-radius: 12px;
+  }
+  .attendee-block-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+  }
+  .attendee-block-title { font-size: 13.5px; font-weight: 700; color: var(--ink-soft); }
+  .remove-attendee-btn {
+    background: none; border: none; color: var(--error); font-size: 12.5px;
+    text-decoration: underline; cursor: pointer; padding: 4px;
+  }
+
+  .add-attendee-btn {
+    display: block; width: calc(100% - 40px); margin: 0 20px 22px; padding: 12px;
+    background: none; border: 1.5px dashed #C7CAD1; border-radius: 12px;
+    color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .add-attendee-btn:hover { border-color: var(--line-green); color: var(--line-green-dark); }
+
+  .field { margin-bottom: 14px; padding: 0 20px; }
+  .attendee-block .field { padding: 0; margin-bottom: 14px; }
+
+  .field label { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 12px; color: var(--ink-soft); font-weight: 400; margin-left: 4px; }
+
+  .field input, .field textarea {
+    width: 100%; padding: 13px 14px; border: 1.5px solid transparent;
+    background: var(--field-bg); border-radius: 10px; font-size: 15px;
+    font-family: inherit; color: var(--ink);
+  }
+
+  .field input:focus, .field textarea:focus {
+    outline: none; border-color: var(--line-green); background: var(--paper);
+  }
+
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  .field select {
+    width: 100%; padding: 13px 14px; border: 1.5px solid transparent;
+    background: var(--field-bg); border-radius: 10px; font-size: 15px;
+    font-family: inherit; color: var(--ink); appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236B6F76'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; background-size: 18px;
+  }
+
+  .field select:focus { outline: none; border-color: var(--line-green); background-color: var(--paper); }
+
+  .toggle-group { display: flex; gap: 8px; }
+
+  .toggle-btn {
+    flex: 1; padding: 12px 10px; border-radius: 10px; border: 1.5px solid var(--field-bg);
+    background: var(--field-bg); color: var(--ink-soft); font-size: 14.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; text-align: center;
+  }
+
+  .toggle-btn.selected {
+    background: #E4F8EC; border-color: var(--line-green); color: var(--line-green-dark);
+  }
+
+  .field.has-error input { border-color: var(--error); background: #FDEDEC; }
+  .field-error { color: var(--error); font-size: 12px; margin-top: 5px; display: none; }
+  .field.has-error .field-error { display: block; }
+
+  .privacy-note {
+    font-size: 12px; color: var(--ink-soft); line-height: 1.6;
+    background: var(--field-bg); border-radius: 10px; padding: 12px 14px;
+    margin: 0 20px 18px;
+  }
+
+  .submit-btn {
+    display: block; width: calc(100% - 40px); margin: 0 20px; padding: 15px;
+    background: var(--line-green); color: white;
+    border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+    cursor: pointer;
+  }
+
+  .submit-btn:hover { background: var(--line-green-dark); }
+  .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
+
+  .secondary-actions {
+    display: flex; justify-content: center; margin: 16px 20px 0;
+    font-size: 13px;
+  }
+
+  .link-btn {
+    background: none; border: none; cursor: pointer; font-size: 13px;
+    text-decoration: underline; padding: 6px 2px; font-family: inherit;
+  }
+
+  .link-btn.cancel { color: var(--ink-soft); }
+  .link-btn.delete { color: var(--error); }
+
+  .state-screen {
+    flex: 1; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+  }
+
+  .state-screen.active { display: flex; }
+
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--field-bg);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white;
+    font-size: 28px; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .icon-circle.success { background: var(--line-green); }
+  .icon-circle.error { background: var(--error); }
+
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 300px; line-height: 1.5; white-space: pre-wrap; }
+
+  #form-screen { display: none; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle error">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn" style="margin-top:20px; max-width:220px;">重新登入 Re-login</button>
+  </div>
+
+  <div id="form-screen">
+    <div class="header">
+      <h1 id="event-name">活動報名 Event Registration</h1>
+      <p class="event-meta" id="event-meta"></p>
+      <p class="event-meta" id="event-description" style="margin-top:10px; display:none;"></p>
+    </div>
+
+    <div class="profile-card">
+      <img id="profile-pic" src="" alt="">
+      <div>
+        <div class="name" id="profile-name">—</div>
+        <div class="sub">已透過 LINE 驗證身份</div>
+      </div>
+    </div>
+
+    <div id="existing-section" style="display:none;">
+      <div class="section-title">您已登記的人員 Your registrations</div>
+      <div id="existing-list"></div>
+    </div>
+
+    <form id="reg-form">
+      <div class="section-title" id="add-section-title">新增報名人員 Add attendees</div>
+      <p style="font-size:12.5px; color:var(--ink-soft); margin:-4px 20px 16px; line-height:1.5;">
+        可一次幫多位親友報名，點擊下方「新增一位」即可。
+      </p>
+
+      <div id="attendee-blocks"></div>
+
+      <button type="button" class="add-attendee-btn" id="add-attendee-btn">＋ 新增一位 Add another person</button>
+
+      <div class="field">
+        <label>聯絡 Email <span class="hint">選填，用於通知</span></label>
+        <input type="email" id="input-email" placeholder="you@example.com">
+      </div>
+
+      <div class="privacy-note">
+        您所提交的資料僅用於本次活動的報名與報到聯繫，僅主辦單位與工作人員可查閱。您可隨時編輯或取消已登記人員的報名，或使用下方按鈕刪除您在「本活動」的報名資料。
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">送出報名 Submit</button>
+
+      <div class="secondary-actions" id="secondary-actions" style="display:none;">
+        <button type="button" class="link-btn delete" id="delete-btn">刪除我在本活動的報名資料</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="success-screen" class="state-screen">
+    <div class="icon-circle success">✓</div>
+    <h2 id="success-title">報名成功！</h2>
+    <p id="success-message">我們已收到您的資料，確認訊息將會透過 LINE 通知您。</p>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   CONFIG — replace before deploying
+   ========================================================= */
+// LIFF_ID is no longer hardcoded — each event now has its own LIFF app
+// (created automatically by the admin dashboard), so we look up the
+// correct one for this event before calling liff.init().
+let LIFF_ID = null;
+// Your deployed Edge Function URL, e.g.
+// https://YOUR_PROJECT.functions.supabase.co/registrant-api
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/registrant-api';
+
+// Used ONLY for reading public event info (name/date/location) — the
+// "public can read active events" RLS policy is what makes this safe.
+// This client never touches users/registrations; all of that goes
+// through the Edge Function above.
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+/* ========================================================= */
+
+const supabasePublic = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const screens = {
+  loading: document.getElementById('loading-screen'),
+  error: document.getElementById('error-screen'),
+  form: document.getElementById('form-screen'),
+  success: document.getElementById('success-screen'),
+};
+
+function showScreen(name) {
+  Object.entries(screens).forEach(([key, el]) => {
+    if (key === 'form') {
+      el.style.display = key === name ? 'flex' : 'none';
+    } else {
+      el.classList.toggle('active', key === name);
+    }
+  });
+}
+
+let idToken = null;
+let lineProfile = null;
+let currentEventId = null;
+let currentEventSlug = null;
+let currentFormSchema = [];
+let existingRegistrations = [];
+let blockCounter = 0;
+
+const STATUS_LABELS = {
+  pending: '待確認', confirmed: '已確認', checked_in: '已報到', cancelled: '已取消',
+};
+
+function getEventSlugFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const direct = params.get('event');
+  if (direct) return direct;
+
+  // Shared LIFF app: every event now opens through the SAME LIFF app
+  // (see create-liff-app / cleanup notes), so the "which event is
+  // this" info isn't baked into the registered endpoint — it's
+  // appended to the liff.line.me link itself, e.g.
+  // "https://liff.line.me/<id>?event=<slug>". LINE forwards anything
+  // appended that way as an opaque `liff.state` query param instead
+  // of passing it straight through, so it has to be unpacked here.
+  // See: https://developers.line.biz/en/docs/liff/opening-liff-app/
+  const state = params.get('liff.state');
+  if (state) {
+    try {
+      const decoded = decodeURIComponent(state);
+      const queryPart = decoded.includes('?') ? decoded.split('?').slice(1).join('?') : decoded;
+      return new URLSearchParams(queryPart).get('event');
+    } catch (err) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function callApi(action, extra = {}) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  return data;
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT at: ' + label)), ms)),
+  ]);
+}
+
+/* ---------- Per-event dynamic custom fields (namespaced per attendee block) ---------- */
+
+function dynamicFieldsHTML(key) {
+  return currentFormSchema.map(field => {
+    const fid = 'att-field-' + key + '-' + field.id;
+    const iid = 'att-input-' + key + '-' + field.id;
+    if (field.type === 'select') {
+      const options = field.options.map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('');
+      return `
+        <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="select" data-required="${!!field.required}">
+          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+          <select id="${iid}">
+            <option value="">請選擇…</option>
+            ${options}
+          </select>
+          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
+        </div>`;
+    }
+    if (field.type === 'toggle') {
+      const opts = (field.options && field.options.length === 2) ? field.options : ['需要', '不需要'];
+      return `
+        <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="toggle" data-required="${!!field.required}" data-value="">
+          <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+          <div class="toggle-group">
+            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[0])}">${escapeHtml(opts[0])}</button>
+            <button type="button" class="toggle-btn" data-value="${escapeHtml(opts[1])}">${escapeHtml(opts[1])}</button>
+          </div>
+          <div class="field-error">請選擇${escapeHtml(field.label)}</div>
+        </div>`;
+    }
+    // fallback: plain text field for any future 'text' type fields
+    return `
+      <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="text" data-required="${!!field.required}">
+        <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
+        <input type="text" id="${iid}">
+        <div class="field-error">請填寫${escapeHtml(field.label)}</div>
+      </div>`;
+  }).join('');
+}
+
+// One delegated listener handles every toggle button, in every
+// attendee block (new or edit-mode), present now or added later.
+document.getElementById('app').addEventListener('click', (e) => {
+  const btn = e.target.closest('.toggle-btn');
+  if (!btn) return;
+  const fieldEl = btn.closest('[data-field-type="toggle"]');
+  if (!fieldEl) return;
+  fieldEl.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  fieldEl.dataset.value = btn.dataset.value;
+  fieldEl.classList.remove('has-error');
+});
+
+function collectAttendeeData(key) {
+  const extra = {};
+  currentFormSchema.forEach(field => {
+    if (field.type === 'toggle') {
+      const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
+      extra[field.id] = fieldEl ? (fieldEl.dataset.value || '') : '';
+    } else {
+      const input = document.getElementById('att-input-' + key + '-' + field.id);
+      extra[field.id] = input ? input.value.trim() : '';
+    }
+  });
+  return {
+    name: document.getElementById('att-name-' + key).value.trim(),
+    phone: document.getElementById('att-phone-' + key).value.trim(),
+    notes: document.getElementById('att-notes-' + key).value.trim() || null,
+    extra_data: extra,
+  };
+}
+
+function prefillAttendeeBlock(key, data) {
+  document.getElementById('att-name-' + key).value = data.attendee_name || '';
+  document.getElementById('att-phone-' + key).value = data.attendee_phone || '';
+  const notesEl = document.getElementById('att-notes-' + key);
+  if (notesEl) notesEl.value = data.notes || '';
+
+  const extraData = data.extra_data || {};
+  currentFormSchema.forEach(field => {
+    const value = extraData[field.id];
+    if (value === undefined || value === null || value === '') return;
+    if (field.type === 'select') {
+      const sel = document.getElementById('att-input-' + key + '-' + field.id);
+      if (sel) sel.value = value;
+    } else if (field.type === 'toggle') {
+      const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
+      if (!fieldEl) return;
+      fieldEl.dataset.value = value;
+      fieldEl.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('selected', b.dataset.value === value));
+    } else {
+      const input = document.getElementById('att-input-' + key + '-' + field.id);
+      if (input) input.value = value;
+    }
+  });
+}
+
+function validateAttendeeBlock(key) {
+  let valid = true;
+  const nameInput = document.getElementById('att-name-' + key);
+  const phoneInput = document.getElementById('att-phone-' + key);
+  const phonePattern = /^[0-9\-+ ]{8,15}$/;
+
+  const name = nameInput.value.trim();
+  nameInput.closest('.field').classList.toggle('has-error', !name);
+  if (!name) valid = false;
+
+  const phone = phoneInput.value.trim();
+  const phoneValid = phonePattern.test(phone);
+  phoneInput.closest('.field').classList.toggle('has-error', !phoneValid);
+  if (!phoneValid) valid = false;
+
+  currentFormSchema.forEach(field => {
+    if (!field.required) return;
+    const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
+    if (!fieldEl) return;
+    let hasValue = false;
+    if (field.type === 'toggle') {
+      hasValue = !!fieldEl.dataset.value;
+    } else {
+      const input = document.getElementById('att-input-' + key + '-' + field.id);
+      hasValue = input && input.value.trim() !== '';
+    }
+    fieldEl.classList.toggle('has-error', !hasValue);
+    if (!hasValue) valid = false;
+  });
+
+  return valid;
+}
+
+/* ---------- "Add attendees" repeatable blocks ---------- */
+
+function attendeeBlockHTML(key, prefillName) {
+  return `
+    <div class="attendee-block" data-block-key="${key}">
+      <div class="attendee-block-header">
+        <span class="attendee-block-title">Person</span>
+        <button type="button" class="remove-attendee-btn" style="display:none;">移除 Remove</button>
+      </div>
+      <div class="field">
+        <label>姓名 Full name</label>
+        <input type="text" id="att-name-${key}" value="${escapeHtml(prefillName || '')}" required>
+        <div class="field-error">請輸入姓名</div>
+      </div>
+      <div class="field">
+        <label>手機號碼 Phone</label>
+        <input type="tel" id="att-phone-${key}" placeholder="0912-345-678" required>
+        <div class="field-error">請輸入正確的手機號碼</div>
+      </div>
+      <div id="att-dynamic-${key}"></div>
+      <div class="field">
+        <label>備註 Notes <span class="hint">選填</span></label>
+        <textarea id="att-notes-${key}" placeholder="飲食限制、特殊需求等"></textarea>
+      </div>
+    </div>`;
+}
+
+function updateAttendeeBlockChrome() {
+  const blocks = document.querySelectorAll('#attendee-blocks .attendee-block');
+  blocks.forEach((b, i) => {
+    b.querySelector('.attendee-block-title').textContent = '第 ' + (i + 1) + ' 位 Person ' + (i + 1);
+    const removeBtn = b.querySelector('.remove-attendee-btn');
+    removeBtn.style.display = blocks.length > 1 ? 'inline-block' : 'none';
+  });
+}
+
+function addAttendeeBlock(prefillName) {
+  const key = 'new' + (blockCounter++);
+  const wrap = document.createElement('div');
+  wrap.innerHTML = attendeeBlockHTML(key, prefillName || '');
+  const blockEl = wrap.firstElementChild;
+  document.getElementById('attendee-blocks').appendChild(blockEl);
+  document.getElementById('att-dynamic-' + key).innerHTML = dynamicFieldsHTML(key);
+  updateAttendeeBlockChrome();
+  return key;
+}
+
+document.getElementById('attendee-blocks').addEventListener('click', (e) => {
+  const btn = e.target.closest('.remove-attendee-btn');
+  if (!btn) return;
+  btn.closest('.attendee-block').remove();
+  updateAttendeeBlockChrome();
+});
+
+document.getElementById('add-attendee-btn').addEventListener('click', () => addAttendeeBlock(''));
+
+/* ---------- Existing registrations (already-submitted attendees) ---------- */
+
+function existingCardHTML(r) {
+  const details = currentFormSchema.map(f => {
+    const v = (r.extra_data || {})[f.id];
+    return v ? escapeHtml(f.label) + '：' + escapeHtml(v) : '';
+  }).filter(Boolean).join('　');
+
+  return `
+    <div class="existing-card" data-reg-id="${r.id}">
+      <div class="existing-card-top">
+        <div class="existing-card-name">${escapeHtml(r.attendee_name)}</div>
+        <span class="existing-status-badge ${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
+      </div>
+      <div class="existing-card-sub">${escapeHtml(r.attendee_phone || '')}</div>
+      ${details ? `<div class="existing-card-details">${details}</div>` : ''}
+      <div class="existing-card-actions">
+        <button type="button" class="link-btn edit-existing-btn" data-reg-id="${r.id}">編輯</button>
+        <button type="button" class="link-btn cancel cancel-existing-btn" data-reg-id="${r.id}">取消報名</button>
+      </div>
+    </div>`;
+}
+
+function renderExistingList() {
+  const listEl = document.getElementById('existing-list');
+  const section = document.getElementById('existing-section');
+  if (!existingRegistrations || existingRegistrations.length === 0) {
+    section.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+  section.style.display = 'block';
+  listEl.innerHTML = existingRegistrations.map(r => existingCardHTML(r)).join('');
+}
+
+function startEditExisting(regId) {
+  const reg = existingRegistrations.find(r => r.id === regId);
+  if (!reg) return;
+  const key = 'e' + regId.replace(/-/g, '');
+  const cardEl = document.querySelector('.existing-card[data-reg-id="' + regId + '"]');
+  if (!cardEl) return;
+
+  cardEl.innerHTML = `
+    <div class="field">
+      <label>姓名 Full name</label>
+      <input type="text" id="att-name-${key}" required>
+      <div class="field-error">請輸入姓名</div>
+    </div>
+    <div class="field">
+      <label>手機號碼 Phone</label>
+      <input type="tel" id="att-phone-${key}" required>
+      <div class="field-error">請輸入正確的手機號碼</div>
+    </div>
+    <div id="att-dynamic-${key}"></div>
+    <div class="field">
+      <label>備註 Notes <span class="hint">選填</span></label>
+      <textarea id="att-notes-${key}"></textarea>
+    </div>
+    <div class="existing-card-actions">
+      <button type="button" class="submit-btn save-edit-btn" data-reg-id="${regId}" data-key="${key}" style="width:auto; padding:10px 16px; font-size:14px;">儲存 Save</button>
+      <button type="button" class="link-btn cancel-edit-btn" data-reg-id="${regId}">取消編輯</button>
+    </div>`;
+
+  document.getElementById('att-dynamic-' + key).innerHTML = dynamicFieldsHTML(key);
+  prefillAttendeeBlock(key, reg);
+}
+
+document.getElementById('existing-list').addEventListener('click', async (e) => {
+  const editBtn = e.target.closest('.edit-existing-btn');
+  if (editBtn) { startEditExisting(editBtn.dataset.regId); return; }
+
+  const cancelEditBtn = e.target.closest('.cancel-edit-btn');
+  if (cancelEditBtn) { renderExistingList(); return; }
+
+  const saveBtn = e.target.closest('.save-edit-btn');
+  if (saveBtn) {
+    const regId = saveBtn.dataset.regId;
+    const key = saveBtn.dataset.key;
+    if (!validateAttendeeBlock(key)) return;
+    const data = collectAttendeeData(key);
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = '儲存中…';
+    try {
+      const { registration } = await callApi('update_attendee', {
+        registration_id: regId, name: data.name, phone: data.phone,
+        extra_data: data.extra_data, notes: data.notes,
+      });
+      const idx = existingRegistrations.findIndex(r => r.id === regId);
+      if (idx >= 0) existingRegistrations[idx] = registration;
+      renderExistingList();
+    } catch (err) {
+      alert('儲存失敗，請稍後再試。\n' + err.message);
+      saveBtn.disabled = false;
+      saveBtn.textContent = '儲存 Save';
+    }
+    return;
+  }
+
+  const cancelBtn = e.target.closest('.cancel-existing-btn');
+  if (cancelBtn) {
+    if (!confirm('確定要取消這位的報名嗎？')) return;
+    const regId = cancelBtn.dataset.regId;
+    try {
+      await callApi('cancel_registration', { registration_id: regId });
+      existingRegistrations = existingRegistrations.filter(r => r.id !== regId);
+      renderExistingList();
+    } catch (err) {
+      alert('取消失敗，請稍後再試。\n' + err.message);
+    }
+  }
+});
+
+/* ---------- LIFF boot flow ---------- */
+
+async function initLiff() {
+  try {
+    setLoadingText('步驟 1/6：讀取活動資訊…');
+    currentEventSlug = getEventSlugFromUrl();
+    if (currentEventSlug) {
+      try { sessionStorage.setItem('lastEventSlug', currentEventSlug); } catch (e) {}
+    } else {
+      try { currentEventSlug = sessionStorage.getItem('lastEventSlug'); } catch (e) {}
+    }
+    if (!currentEventSlug) {
+      document.getElementById('error-message').textContent =
+        '此連結缺少活動資訊。請點擊下方按鈕重試，或請主辦單位重新提供完整報名連結。';
+      showScreen('error');
+      return;
+    }
+
+    const { data: ev, error: evError } = await withTimeout(
+      supabasePublic
+        .from('events')
+        .select('id, name, event_date, location, description, form_schema, liff_id')
+        .eq('slug', currentEventSlug)
+        .eq('is_active', true)
+        .single(),
+      10000, 'event lookup'
+    );
+
+    if (evError || !ev) {
+      document.getElementById('error-message').textContent = '找不到此活動，請確認連結是否正確。';
+      showScreen('error');
+      return;
+    }
+    if (!ev.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此活動尚未設定 LINE 連結，請聯繫主辦單位。';
+      showScreen('error');
+      return;
+    }
+
+    currentEventId = ev.id;
+    currentFormSchema = ev.form_schema || [];
+    LIFF_ID = ev.liff_id;
+    document.getElementById('event-name').textContent = ev.name;
+    document.getElementById('event-meta').textContent =
+      [ev.event_date, ev.location].filter(Boolean).join('　');
+    if (ev.description) {
+      const descEl = document.getElementById('event-description');
+      descEl.textContent = ev.description;
+      descEl.style.display = 'block';
+    }
+    addAttendeeBlock('');
+
+    setLoadingText('步驟 2/6：liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    setLoadingText('步驟 3/6：檢查登入狀態…');
+    if (!liff.isLoggedIn()) {
+      setLoadingText('步驟 3/6：導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    setLoadingText('步驟 4/6：取得 ID Token…');
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    setLoadingText('步驟 5/6：載入個人資料…');
+    document.getElementById('profile-pic').src = lineProfile.pictureUrl || '';
+    document.getElementById('profile-name').textContent = lineProfile.displayName;
+
+    setLoadingText('步驟 6/6：載入報名資料…');
+    await withTimeout(loadExistingRegistration(), 10000, 'loadExistingRegistration()');
+    showScreen('form');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent =
+        '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent =
+        '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try {
+    liff.logout();
+  } catch (e) {
+    // ignore — logout can fail if session already invalid, that's fine
+  }
+  window.location.reload();
+});
+
+async function loadExistingRegistration() {
+  const { user, registrations } = await callApi('get_my_data', { event_id: currentEventId });
+  existingRegistrations = registrations || [];
+
+  if (user) {
+    document.getElementById('input-email').value = user.email || '';
+    document.getElementById('secondary-actions').style.display = 'flex';
+  }
+
+  renderExistingList();
+
+  // Prefill the very first attendee block's name from the LINE profile —
+  // it was created empty (pre-login) in initLiff(), so 'new0' is safe here.
+  const firstNameInput = document.getElementById('att-name-new0');
+  if (firstNameInput && !firstNameInput.value) firstNameInput.value = lineProfile.displayName;
+}
+
+/* ---------- Submit: register one or more new attendees at once ---------- */
+
+document.getElementById('reg-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const blocks = Array.from(document.querySelectorAll('#attendee-blocks .attendee-block'));
+  if (blocks.length === 0) {
+    alert('請至少新增一位報名人員。');
+    return;
+  }
+
+  let allValid = true;
+  const attendees = [];
+  blocks.forEach(b => {
+    const key = b.dataset.blockKey;
+    if (!validateAttendeeBlock(key)) allValid = false;
+    attendees.push(collectAttendeeData(key));
+  });
+  if (!allValid) return;
+
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '送出中…';
+
+  try {
+    const { registrations } = await callApi('register_for_event', {
+      event_id: currentEventId,
+      display_name: lineProfile.displayName,
+      email: document.getElementById('input-email').value.trim() || null,
+      attendees,
+    });
+
+    existingRegistrations = existingRegistrations.concat(registrations || []);
+
+    document.getElementById('success-title').textContent = '報名成功！';
+    document.getElementById('success-message').textContent =
+      attendees.length > 1
+        ? `已為 ${attendees.length} 位完成報名，確認訊息將會透過 LINE 通知您。`
+        : '我們已收到您的資料，確認訊息將會透過 LINE 通知您。';
+    showScreen('success');
+  } catch (err) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '送出報名 Submit';
+    alert('報名失敗，請稍後再試。\n' + err.message);
+  }
+});
+
+document.getElementById('delete-btn').addEventListener('click', async () => {
+  if (!confirm('這會刪除您在「本活動」的所有報名資料（包含您幫所有人登記的報名紀錄），且無法復原。不會影響您在其他活動或系統其他功能中的資料。確定要繼續嗎？')) return;
+  try {
+    await callApi('delete_my_event_registrations', { event_id: currentEventId });
+    document.getElementById('success-title').textContent = '資料已刪除';
+    document.getElementById('success-message').textContent = '您在本活動的報名資料已移除。';
+    showScreen('success');
+  } catch (err) {
+    alert('刪除失敗，請稍後再試。\n' + err.message);
+  }
+});
+
+initLiff();
+</script>
+
+</body>
+</html>

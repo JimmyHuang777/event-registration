@@ -788,7 +788,27 @@ async function teamSubtaskAction(action, instanceId, subtaskTemplateId, complete
 
 function getAltarIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('altar');
+  const direct = params.get('altar');
+  if (direct) return direct;
+
+  // Shared LIFF app: every altar now opens through the SAME LIFF app
+  // (see create-liff-app), so "which altar is this" is appended to
+  // the liff.line.me link itself rather than baked into the
+  // registered endpoint. LINE forwards that as an opaque `liff.state`
+  // query param instead of passing it straight through, so it has to
+  // be unpacked here. See:
+  // https://developers.line.biz/en/docs/liff/opening-liff-app/
+  const state = params.get('liff.state');
+  if (state) {
+    try {
+      const decoded = decodeURIComponent(state);
+      const queryPart = decoded.includes('?') ? decoded.split('?').slice(1).join('?') : decoded;
+      return new URLSearchParams(queryPart).get('altar');
+    } catch (err) {
+      return null;
+    }
+  }
+  return null;
 }
 
 async function initLiff() {
