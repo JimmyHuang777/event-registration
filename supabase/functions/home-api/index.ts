@@ -4,14 +4,14 @@
 // Backs home.html — a single "entry point" LIFF page that shows a
 // LINE member only the links relevant to them, instead of everyone
 // needing their own list of individual LIFF links:
-//   - 行功了愿表 Task Roster (tasks.html)     — shown only if at
+//   - 了愿生活圈 Task Roster (tasks.html)     — shown only if at
 //     least one active job template is actually visible to this
 //     member (public, or restricted to a group they're in).
 //   - 開班資訊表 Activity Flow (activity-flow.html) — same rule,
 //     using activity_flows/activity_flow_groups.
 //   - 行功了愿管理 Job Admin (tasks-admin.html) — shown only if the
 //     caller is listed in task_job_admins.
-//   - 流程表管理 Flow Admin (activity-flow-admin.html) — shown only
+//   - 開班課程表 Flow Admin (activity-flow-admin.html) — shown only
 //     if the caller is listed in activity_flow_admins.
 //   - 活動管理 Event Admin (event-admin.html) — shown only if the
 //     caller is listed in event_admins.
