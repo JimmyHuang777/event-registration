@@ -1,9 +1,11 @@
 name: Deploy Supabase Edge Functions
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/deploy-edge-function.yml'
       - 'supabase/functions/registrant-api/**'
       - 'supabase/functions/tasks-api/**'
       - 'supabase/functions/tasks-admin-api/**'
