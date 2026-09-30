@@ -400,7 +400,19 @@ async function initLiff() {
     LIFF_ID = liffRow.liff_id;
 
     setLoadingText('liff.init()…');
-    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+    // liff.init() occasionally hangs on the first attempt inside LINE's
+    // in-app browser; one retry after a short wait usually clears it.
+    try {
+      await withTimeout(liff.init({ liffId: LIFF_ID }), 12000, 'liff.init()');
+    } catch (initErr) {
+      if (!/timed out/i.test(String(initErr && initErr.message))) throw initErr;
+      let retried = false;
+      try { retried = sessionStorage.getItem('profileInitRetried') === '1'; sessionStorage.setItem('profileInitRetried', '1'); } catch (e) {}
+      if (!retried) { window.location.reload(); return; }
+      throw initErr;
+    }
+
+    try { sessionStorage.removeItem('profileInitRetried'); } catch (e) {}
 
     if (!liff.isLoggedIn()) {
       setLoadingText('導向 LINE 登入…');
@@ -424,7 +436,7 @@ async function initLiff() {
     myFamily = all.family || [];
     renderSelf();
     renderFamilyList();
-    if (new URLSearchParams(location.search).get('tab') === 'family') switchTab('family');
+    if (location.hash === '#family') switchTab('family');
 
     showScreen('main');
   } catch (err) {
