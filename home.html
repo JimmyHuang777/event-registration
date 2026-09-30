@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>入口 Home</title>
+<title>群聖家園 Home</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -80,7 +80,7 @@
 
   <div id="main-screen">
     <div class="header">
-      <h1>功能入口 Home</h1>
+      <h1>群聖家園 Home</h1>
       <p>點選以下項目前往對應功能</p>
     </div>
     <div class="profile-row">
@@ -190,7 +190,7 @@ async function renderMenu(menuData) {
   const lastSection0 = { value: null };
   appendSectionLabel(listEl, '我的資料 My Info', lastSection0);
   [
-    { href: 'profile.html', icon: '🪪', color: '#0EA5A4', title: '個人資訊 Profile', desc: '壇、姓名、性別、天職、佛堂、電話；報名時可一鍵帶入' },
+    { href: 'profile.html', icon: '🪪', color: '#0EA5A4', title: '個人資訊 Profile', desc: '公堂組別、姓名、性別、天職、佛堂、電話；報名時可一鍵帶入' },
     { href: 'profile.html#family', icon: '👪', color: '#8B5CF6', title: '親友資訊 Family & Friends', desc: '新增親友與「與您的關係」；報名時可一鍵帶入' },
   ].forEach(p => {
     const card = document.createElement('a');
@@ -233,7 +233,7 @@ async function renderMenu(menuData) {
 
   // ---- Active events (each has its own unique liff_id already) ----
   if (events.length > 0) {
-    appendSectionLabel(listEl, '活動報名 Events', lastSection);
+    appendSectionLabel(listEl, '班程報名', lastSection);
     events.forEach(ev => {
       const card = document.createElement('a');
       card.className = 'menu-card';

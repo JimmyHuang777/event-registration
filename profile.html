@@ -106,7 +106,7 @@
 
   <div id="main-screen">
     <div class="header">
-      <a href="home.html" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">‹ 返回入口</a>
+      <a href="home.html" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">‹ 返回群聖家園</a>
       <h1 style="margin-top:6px;">個人資訊 Profile</h1>
       <p>報名活動時可一鍵帶入，不用重複填寫</p>
     </div>
@@ -202,6 +202,8 @@ function toast(msg) {
 
 /* ---------- Shared person form (used for self and family) ---------- */
 
+const GROUPS = ['1', '2', '3', '4', '5', '6', '7', '8', '無'];
+
 function personFormHTML(prefix, withRelationship, v) {
   v = v || {};
   const rel = withRelationship ? `
@@ -212,8 +214,12 @@ function personFormHTML(prefix, withRelationship, v) {
     </div>` : '';
   return rel + `
     <div class="field" data-f="altar_name">
-      <label>壇 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
-      <input type="text" id="${prefix}-altar_name" value="${escapeHtml(v.altar_name)}">
+      <label>公堂組別</label>
+      <select id="${prefix}-altar_name" style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; background:var(--paper);">
+        <option value="">請選擇…</option>
+        ${GROUPS.map(g => `<option value="${g}" ${v.altar_name === g ? 'selected' : ''}>${g}</option>`).join('')}
+      </select>
+      <div class="field-error">請選擇公堂組別</div>
     </div>
     <div class="field" data-f="full_name">
       <label>姓名</label>
@@ -221,36 +227,42 @@ function personFormHTML(prefix, withRelationship, v) {
       <div class="field-error">請填寫姓名</div>
     </div>
     <div class="field" data-f="gender">
-      <label>性別 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <label>性別</label>
       <div class="seg" id="${prefix}-gender" data-value="${escapeHtml(v.gender)}">
         ${GENDERS.map(g => `<button type="button" data-v="${g}" class="${v.gender === g ? 'selected' : ''}">${g}</button>`).join('')}
       </div>
+      <div class="field-error">請選擇性別</div>
     </div>
     <div class="field" data-f="duty">
-      <label>天職 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <label>天職</label>
       <input type="text" id="${prefix}-duty" value="${escapeHtml(v.duty)}">
+      <div class="field-error">請填寫天職</div>
     </div>
     <div class="field" data-f="shrine">
-      <label>佛堂 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <label>佛堂</label>
       <input type="text" id="${prefix}-shrine" value="${escapeHtml(v.shrine)}">
+      <div class="field-error">請填寫佛堂</div>
     </div>
     <div class="field" data-f="phone">
-      <label>電話 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <label>電話</label>
       <input type="tel" id="${prefix}-phone" value="${escapeHtml(v.phone)}" placeholder="0912-345-678">
+      <div class="field-error">請填寫正確的電話</div>
     </div>`;
 }
 
-// Gender segmented buttons (tap again to un-select).
+// Gender segmented buttons (a choice is required, so tapping the selected one keeps it).
 document.addEventListener('click', (e) => {
   const b = e.target.closest('.seg button');
   if (!b) return;
   const seg = b.parentElement;
-  const wasSelected = b.classList.contains('selected');
   seg.querySelectorAll('button').forEach(x => x.classList.remove('selected'));
-  if (!wasSelected) b.classList.add('selected');
-  seg.dataset.value = wasSelected ? '' : b.dataset.v;
+  b.classList.add('selected');
+  seg.dataset.value = b.dataset.v;
+  const field = seg.closest('.field');
+  if (field) field.classList.remove('has-error');
 });
 
+// Every field is required.
 function readPersonForm(prefix, withRelationship) {
   const val = (f) => document.getElementById(prefix + '-' + f).value.trim();
   const out = {
@@ -258,16 +270,20 @@ function readPersonForm(prefix, withRelationship) {
     gender: document.getElementById(prefix + '-gender').dataset.value || '',
     duty: val('duty'), shrine: val('shrine'), phone: val('phone'),
   };
+  if (withRelationship) out.relationship = val('relationship');
+
+  const phoneOk = /^[0-9\-+ ]{8,15}$/.test(out.phone);
+  const root = document.getElementById(prefix + '-full_name').closest('.field').parentElement;
   let ok = true;
-  const mark = (f, bad) => {
-    const el = document.querySelector('#' + prefix + '-full_name').closest('.field').parentElement.querySelector('[data-f="' + f + '"]');
+  Object.keys(out).forEach(f => {
+    const bad = f === 'phone' ? !phoneOk : !out[f];
+    const el = root.querySelector('[data-f="' + f + '"]');
     if (el) el.classList.toggle('has-error', bad);
     if (bad) ok = false;
-  };
-  mark('full_name', !out.full_name);
-  if (withRelationship) {
-    out.relationship = val('relationship');
-    mark('relationship', !out.relationship);
+  });
+  if (!ok) {
+    const first = root.querySelector('.has-error');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   return ok ? out : null;
 }
@@ -302,7 +318,7 @@ function renderFamilyList() {
     return;
   }
   el.innerHTML = myFamily.map(m => {
-    const bits = [m.gender, m.altar_name && ('壇：' + m.altar_name), m.shrine && ('佛堂：' + m.shrine), m.duty && ('天職：' + m.duty), m.phone].filter(Boolean).map(escapeHtml).join('　');
+    const bits = [m.gender, m.altar_name && ('公堂組別：' + m.altar_name), m.shrine && ('佛堂：' + m.shrine), m.duty && ('天職：' + m.duty), m.phone].filter(Boolean).map(escapeHtml).join('　');
     return `
     <div class="card" data-id="${m.id}">
       <div class="member-top">

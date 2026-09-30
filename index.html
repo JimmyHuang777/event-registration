@@ -644,7 +644,7 @@ function personValueForLabel(label, p) {
   if (/性別/.test(label)) return p.gender;
   if (/天職/.test(label)) return p.duty;
   if (/佛堂/.test(label)) return p.shrine;
-  if (/壇/.test(label)) return p.altar_name;
+  if (/公堂組別|壇/.test(label)) return p.altar_name;
   return null;
 }
 
@@ -673,7 +673,7 @@ document.getElementById('attendee-blocks').addEventListener('click', (e) => {
   const btn = e.target.closest('.fill-self-btn');
   if (!btn) return;
   if (!myProfile) {
-    if (confirm('您還沒有填寫個人資訊。要前往「入口 → 個人資訊」填寫嗎？')) location.href = 'profile.html';
+    if (confirm('您還沒有填寫個人資訊。要前往「群聖家園 → 個人資訊」填寫嗎？')) location.href = 'profile.html';
     return;
   }
   const key = btn.closest('.attendee-block').dataset.blockKey;

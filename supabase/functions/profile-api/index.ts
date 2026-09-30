@@ -53,28 +53,27 @@ async function verifyLineToken(idToken: string) {
 }
 
 const GENDERS = ["乾", "坤", "童", "女"];
+const GROUPS = ["1", "2", "3", "4", "5", "6", "7", "8", "無"];
 
-// Validates + normalizes the shared personal fields.
-function cleanPerson(body: any): { ok: true; value: Record<string, string | null> } | { ok: false; error: string } {
+// Validates + normalizes the shared personal fields. Every field is required.
+function cleanPerson(body: any): { ok: true; value: Record<string, string> } | { ok: false; error: string } {
   const str = (v: unknown, max: number) => {
     const s = typeof v === "string" ? v.trim() : "";
     return s.length > max ? s.slice(0, max) : s;
   };
+  const altar_name = str(body.altar_name, 4);
+  if (!GROUPS.includes(altar_name)) return { ok: false, error: "公堂組別必須是 1~8 或 無。" };
   const full_name = str(body.full_name, 60);
   if (!full_name) return { ok: false, error: "請填寫姓名。" };
   const gender = str(body.gender, 4);
-  if (gender && !GENDERS.includes(gender)) return { ok: false, error: "性別必須是 乾／坤／童／女 其中之一。" };
-  return {
-    ok: true,
-    value: {
-      altar_name: str(body.altar_name, 60) || null,
-      full_name,
-      gender: gender || null,
-      duty: str(body.duty, 60) || null,
-      shrine: str(body.shrine, 60) || null,
-      phone: str(body.phone, 30) || null,
-    },
-  };
+  if (!GENDERS.includes(gender)) return { ok: false, error: "性別必須是 乾／坤／童／女 其中之一。" };
+  const duty = str(body.duty, 60);
+  if (!duty) return { ok: false, error: "請填寫天職。" };
+  const shrine = str(body.shrine, 60);
+  if (!shrine) return { ok: false, error: "請填寫佛堂。" };
+  const phone = str(body.phone, 30);
+  if (!/^[0-9\-+ ]{8,15}$/.test(phone)) return { ok: false, error: "請填寫正確的電話。" };
+  return { ok: true, value: { altar_name, full_name, gender, duty, shrine, phone } };
 }
 
 serve(async (req) => {

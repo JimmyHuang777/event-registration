@@ -515,6 +515,13 @@ function collectFormSchema() {
 
 /* ---------- Form ---------- */
 
+const DEFAULT_PERSONAL_FIELDS = [
+  { label: '公堂組別', type: 'select', required: true, options: ['1','2','3','4','5','6','7','8','無'] },
+  { label: '性別', type: 'select', required: true, options: ['乾','坤','童','女'] },
+  { label: '天職', type: 'text', required: true },
+  { label: '佛堂', type: 'text', required: true },
+];
+
 function openForm(ev) {
   editingId = ev ? ev.id : null;
   document.getElementById('form-title').textContent = ev ? '編輯活動 Edit Event' : '新增活動 New Event';
@@ -530,7 +537,8 @@ function openForm(ev) {
   document.getElementById('f-slug-lock-note').style.display = ev ? 'block' : 'none';
 
   document.getElementById('field-builder-list').innerHTML = '';
-  (ev ? (ev.form_schema || []) : []).forEach(f => addFieldBuilderRow(f));
+  // New events start with the personal-info fields (so 帶入個人資訊 can fill them).
+  (ev ? (ev.form_schema || []) : DEFAULT_PERSONAL_FIELDS).forEach(f => addFieldBuilderRow(f));
 
   const checkedGroupIds = new Set(ev ? (ev.group_ids || []) : []);
   renderGroupChips(checkedGroupIds);
