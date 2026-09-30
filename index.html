@@ -810,6 +810,18 @@ async function initLiff() {
     if (!currentEventSlug) {
       // The site root is the endpoint of the ONE LIFF app (Home), so opening
       // the Home link with no event lands here — send it to the Home page.
+      // LINE hands the LIFF session (login/auth params) to the FIRST page it
+      // loads, and only liff.init() consumes it — so initialise LIFF here
+      // before leaving, otherwise home.html's own liff.init() hangs.
+      try {
+        const { data: homeRow } = await withTimeout(
+          supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
+          10000, 'home liff lookup'
+        );
+        if (homeRow && homeRow.liff_id) {
+          await withTimeout(liff.init({ liffId: homeRow.liff_id }), 10000, 'liff.init()');
+        }
+      } catch (e) { console.warn('pre-redirect liff.init failed', e); }
       location.replace('home.html');
       return;
     }
