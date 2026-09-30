@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>個人資訊 Profile</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB; --error: #E0483E;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; }
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 22px 20px 16px; background: var(--paper); border-bottom: 1px solid var(--line); }
+  .header h1 { font-size: 19px; margin: 0 0 4px; }
+  .header p { font-size: 13px; color: var(--ink-soft); margin: 0; }
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+    text-decoration: none; color: inherit;
+  }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; color: white;
+  }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .section-label { font-size: 12px; color: var(--ink-soft); font-weight: 700; margin: 14px 4px 2px; letter-spacing: 0.02em; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+
+  .tabs { display: flex; background: var(--paper); border-bottom: 1px solid var(--line); }
+  .tab { flex: 1; text-align: center; padding: 12px 0; font-size: 14px; font-weight: 700; color: var(--ink-soft); border: none; background: none; border-bottom: 3px solid transparent; cursor: pointer; }
+  .tab.active { color: var(--line-green); border-bottom-color: var(--line-green); }
+  .panel { padding: 16px; display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field input[type=text], .field input[type=tel] { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; background: var(--paper); }
+  .field.has-error input { border-color: var(--error); }
+  .field-error { display: none; color: var(--error); font-size: 12px; margin-top: 4px; }
+  .field.has-error .field-error { display: block; }
+  .seg { display: flex; gap: 8px; }
+  .seg button { flex: 1; padding: 10px 0; border: 1px solid var(--line); background: var(--paper); border-radius: 10px; font-size: 15px; cursor: pointer; }
+  .seg button.selected { background: var(--line-green); color: #fff; border-color: var(--line-green); }
+  .primary-btn { width: 100%; padding: 13px; background: var(--line-green); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .primary-btn:disabled { opacity: .6; }
+  .ghost-btn { padding: 8px 12px; background: none; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--ink); }
+  .ghost-btn.danger { color: var(--error); }
+  .member-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .member-name { font-size: 15px; font-weight: 700; }
+  .rel-badge { font-size: 12px; background: #E7F8EE; color: #067A37; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .member-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.5; }
+  .member-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1A1A1A; color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 13px; display: none; z-index: 10; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <a href="home.html" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">‹ 返回入口</a>
+      <h1 style="margin-top:6px;">個人資訊 Profile</h1>
+      <p>報名活動時可一鍵帶入，不用重複填寫</p>
+    </div>
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="self">個人資訊</button>
+      <button type="button" class="tab" data-tab="family">親友資訊</button>
+    </div>
+
+    <!-- 個人資訊 -->
+    <div class="panel active" id="panel-self">
+      <div class="card">
+        <div id="self-form"></div>
+        <button type="button" class="primary-btn" id="self-save-btn">儲存 Save</button>
+      </div>
+    </div>
+
+    <!-- 親友資訊 -->
+    <div class="panel" id="panel-family">
+      <div id="family-list"></div>
+      <button type="button" class="primary-btn" id="family-add-btn">＋ 新增親友</button>
+      <div class="card" id="family-form-card" style="display:none; margin-top:12px;">
+        <h3 id="family-form-title" style="margin:0 0 12px; font-size:16px;">新增親友</h3>
+        <div id="family-form"></div>
+        <button type="button" class="primary-btn" id="family-save-btn">儲存 Save</button>
+        <button type="button" class="ghost-btn" id="family-cancel-btn" style="width:100%; margin-top:8px;">取消</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/profile-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+let myProfile = null;
+let myFamily = [];
+let editingFamilyId = null;
+const GENDERS = ['乾', '坤', '童', '女'];
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen').forEach(el => el.classList.remove('active'));
+  document.getElementById('main-screen').style.display = 'none';
+  if (name === 'main') {
+    document.getElementById('main-screen').style.display = 'flex';
+  } else {
+    document.getElementById(name + '-screen').classList.add('active');
+  }
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms)),
+  ]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 1800);
+}
+
+/* ---------- Shared person form (used for self and family) ---------- */
+
+function personFormHTML(prefix, withRelationship, v) {
+  v = v || {};
+  const rel = withRelationship ? `
+    <div class="field" data-f="relationship">
+      <label>與您的關係 Relationship</label>
+      <input type="text" id="${prefix}-relationship" value="${escapeHtml(v.relationship)}" placeholder="例：配偶、兒子、朋友">
+      <div class="field-error">請填寫與您的關係</div>
+    </div>` : '';
+  return rel + `
+    <div class="field" data-f="altar_name">
+      <label>壇 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <input type="text" id="${prefix}-altar_name" value="${escapeHtml(v.altar_name)}">
+    </div>
+    <div class="field" data-f="full_name">
+      <label>姓名</label>
+      <input type="text" id="${prefix}-full_name" value="${escapeHtml(v.full_name)}">
+      <div class="field-error">請填寫姓名</div>
+    </div>
+    <div class="field" data-f="gender">
+      <label>性別 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <div class="seg" id="${prefix}-gender" data-value="${escapeHtml(v.gender)}">
+        ${GENDERS.map(g => `<button type="button" data-v="${g}" class="${v.gender === g ? 'selected' : ''}">${g}</button>`).join('')}
+      </div>
+    </div>
+    <div class="field" data-f="duty">
+      <label>天職 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <input type="text" id="${prefix}-duty" value="${escapeHtml(v.duty)}">
+    </div>
+    <div class="field" data-f="shrine">
+      <label>佛堂 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <input type="text" id="${prefix}-shrine" value="${escapeHtml(v.shrine)}">
+    </div>
+    <div class="field" data-f="phone">
+      <label>電話 <span style="color:var(--ink-soft); font-weight:400;">選填</span></label>
+      <input type="tel" id="${prefix}-phone" value="${escapeHtml(v.phone)}" placeholder="0912-345-678">
+    </div>`;
+}
+
+// Gender segmented buttons (tap again to un-select).
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.seg button');
+  if (!b) return;
+  const seg = b.parentElement;
+  const wasSelected = b.classList.contains('selected');
+  seg.querySelectorAll('button').forEach(x => x.classList.remove('selected'));
+  if (!wasSelected) b.classList.add('selected');
+  seg.dataset.value = wasSelected ? '' : b.dataset.v;
+});
+
+function readPersonForm(prefix, withRelationship) {
+  const val = (f) => document.getElementById(prefix + '-' + f).value.trim();
+  const out = {
+    altar_name: val('altar_name'), full_name: val('full_name'),
+    gender: document.getElementById(prefix + '-gender').dataset.value || '',
+    duty: val('duty'), shrine: val('shrine'), phone: val('phone'),
+  };
+  let ok = true;
+  const mark = (f, bad) => {
+    const el = document.querySelector('#' + prefix + '-full_name').closest('.field').parentElement.querySelector('[data-f="' + f + '"]');
+    if (el) el.classList.toggle('has-error', bad);
+    if (bad) ok = false;
+  };
+  mark('full_name', !out.full_name);
+  if (withRelationship) {
+    out.relationship = val('relationship');
+    mark('relationship', !out.relationship);
+  }
+  return ok ? out : null;
+}
+
+/* ---------- 個人資訊 ---------- */
+
+function renderSelf() {
+  document.getElementById('self-form').innerHTML = personFormHTML('self', false, myProfile || { full_name: lineProfile ? lineProfile.displayName : '' });
+}
+
+document.getElementById('self-save-btn').addEventListener('click', async (e) => {
+  const data = readPersonForm('self', false);
+  if (!data) return;
+  const btn = e.target;
+  btn.disabled = true; btn.textContent = '儲存中…';
+  try {
+    const { profile } = await callApi('save_profile', data);
+    myProfile = profile;
+    toast('已儲存');
+  } catch (err) {
+    alert('儲存失敗：' + err.message);
+  }
+  btn.disabled = false; btn.textContent = '儲存 Save';
+});
+
+/* ---------- 親友資訊 ---------- */
+
+function renderFamilyList() {
+  const el = document.getElementById('family-list');
+  if (myFamily.length === 0) {
+    el.innerHTML = '<div class="empty-state">尚未新增親友。<br>新增後，報名活動時可一鍵帶入。</div>';
+    return;
+  }
+  el.innerHTML = myFamily.map(m => {
+    const bits = [m.gender, m.altar_name && ('壇：' + m.altar_name), m.shrine && ('佛堂：' + m.shrine), m.duty && ('天職：' + m.duty), m.phone].filter(Boolean).map(escapeHtml).join('　');
+    return `
+    <div class="card" data-id="${m.id}">
+      <div class="member-top">
+        <span class="member-name">${escapeHtml(m.full_name)}</span>
+        <span class="rel-badge">${escapeHtml(m.relationship)}</span>
+      </div>
+      ${bits ? `<div class="member-sub">${bits}</div>` : ''}
+      <div class="member-actions">
+        <button type="button" class="ghost-btn fam-edit">編輯</button>
+        <button type="button" class="ghost-btn danger fam-delete">刪除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openFamilyForm(member) {
+  editingFamilyId = member ? member.id : null;
+  document.getElementById('family-form-title').textContent = member ? '編輯親友' : '新增親友';
+  document.getElementById('family-form').innerHTML = personFormHTML('fam', true, member || {});
+  document.getElementById('family-form-card').style.display = 'block';
+  document.getElementById('family-add-btn').style.display = 'none';
+  document.getElementById('family-form-card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeFamilyForm() {
+  editingFamilyId = null;
+  document.getElementById('family-form-card').style.display = 'none';
+  document.getElementById('family-add-btn').style.display = 'block';
+}
+
+document.getElementById('family-add-btn').addEventListener('click', () => openFamilyForm(null));
+document.getElementById('family-cancel-btn').addEventListener('click', closeFamilyForm);
+
+document.getElementById('family-save-btn').addEventListener('click', async (e) => {
+  const data = readPersonForm('fam', true);
+  if (!data) return;
+  if (editingFamilyId) data.id = editingFamilyId;
+  const btn = e.target;
+  btn.disabled = true; btn.textContent = '儲存中…';
+  try {
+    const { member } = await callApi('save_family', data);
+    const i = myFamily.findIndex(m => m.id === member.id);
+    if (i >= 0) myFamily[i] = member; else myFamily.push(member);
+    renderFamilyList();
+    closeFamilyForm();
+    toast('已儲存');
+  } catch (err) {
+    alert('儲存失敗：' + err.message);
+  }
+  btn.disabled = false; btn.textContent = '儲存 Save';
+});
+
+document.getElementById('family-list').addEventListener('click', async (e) => {
+  const card = e.target.closest('.card');
+  if (!card) return;
+  const m = myFamily.find(x => x.id === card.dataset.id);
+  if (!m) return;
+  if (e.target.closest('.fam-edit')) { openFamilyForm(m); return; }
+  if (e.target.closest('.fam-delete')) {
+    if (!confirm('確定要刪除「' + m.full_name + '」嗎？')) return;
+    try {
+      await callApi('delete_family', { id: m.id });
+      myFamily = myFamily.filter(x => x.id !== m.id);
+      renderFamilyList();
+    } catch (err) {
+      alert('刪除失敗：' + err.message);
+    }
+  }
+});
+
+/* ---------- Tabs ---------- */
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.getElementById('panel-self').classList.toggle('active', name === 'self');
+  document.getElementById('panel-family').classList.toggle('active', name === 'family');
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+/* ---------- LIFF boot flow ---------- */
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    setLoadingText('載入資料中…');
+    const all = await callApi('get_all');
+    myProfile = all.profile;
+    myFamily = all.family || [];
+    renderSelf();
+    renderFamilyList();
+    if (new URLSearchParams(location.search).get('tab') === 'family') switchTab('family');
+
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+initLiff();
+</script>
+</body>
+</html>
