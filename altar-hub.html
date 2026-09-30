@@ -827,7 +827,7 @@ async function initLiff() {
     }
 
     const { data: altar, error: altarErr } = await withTimeout(
-      supabasePublic.from('altars').select('id, name, liff_id').eq('id', altarId).maybeSingle(),
+      supabasePublic.from('altars').select('id, name').eq('id', altarId).maybeSingle(),
       10000, 'altar lookup'
     );
     if (altarErr || !altar) {
@@ -835,13 +835,19 @@ async function initLiff() {
       showScreen('error');
       return;
     }
-    if (!altar.liff_id) {
-      document.getElementById('error-message').textContent = '此壇尚未設定 LINE 連結，請聯繫壇務管理員。';
+    // Every altar opens through the ONE shared altar-hub LIFF app, so there
+    // is no per-altar liff_id to look up any more.
+    const { data: sharedRow } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
+      10000, 'shared liff lookup'
+    );
+    if (!sharedRow || !sharedRow.liff_id) {
+      document.getElementById('error-message').textContent = '壇務尚未設定 LINE 連結，請聯繫壇務管理員。';
       showScreen('error');
       return;
     }
     currentAltar = { id: altar.id, name: altar.name };
-    LIFF_ID = altar.liff_id;
+    LIFF_ID = sharedRow.liff_id;
 
     setLoadingText('步驟 2/5：liff.init()…');
     await withTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'liff.init()');

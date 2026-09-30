@@ -718,22 +718,18 @@ async function initLiff() {
   try {
     setLoadingText('步驟 1/6：讀取活動資訊…');
     currentEventSlug = getEventSlugFromUrl();
-    if (currentEventSlug) {
-      try { sessionStorage.setItem('lastEventSlug', currentEventSlug); } catch (e) {}
-    } else {
-      try { currentEventSlug = sessionStorage.getItem('lastEventSlug'); } catch (e) {}
-    }
     if (!currentEventSlug) {
-      document.getElementById('error-message').textContent =
-        '此連結缺少活動資訊。請點擊下方按鈕重試，或請主辦單位重新提供完整報名連結。';
-      showScreen('error');
+      // The site root is the endpoint of the ONE LIFF app (Home), so opening
+      // the Home link with no event lands here — send it to the Home page.
+      location.replace('home.html');
       return;
     }
+    try { sessionStorage.setItem('lastEventSlug', currentEventSlug); } catch (e) {}
 
     const { data: ev, error: evError } = await withTimeout(
       supabasePublic
         .from('events')
-        .select('id, name, event_date, location, description, form_schema, liff_id')
+        .select('id, name, event_date, location, description, form_schema')
         .eq('slug', currentEventSlug)
         .eq('is_active', true)
         .single(),
@@ -745,16 +741,21 @@ async function initLiff() {
       showScreen('error');
       return;
     }
-    if (!ev.liff_id) {
+    // Everything opens through the ONE Home LIFF app (endpoint = site root).
+    const { data: sharedRow } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
+      10000, 'shared liff lookup'
+    );
+    if (!sharedRow || !sharedRow.liff_id) {
       document.getElementById('error-message').textContent =
-        '此活動尚未設定 LINE 連結，請聯繫主辦單位。';
+        '活動報名尚未設定 LINE 連結，請聯繫主辦單位。';
       showScreen('error');
       return;
     }
 
     currentEventId = ev.id;
     currentFormSchema = ev.form_schema || [];
-    LIFF_ID = ev.liff_id;
+    LIFF_ID = sharedRow.liff_id;
     document.getElementById('event-name').textContent = ev.name;
     document.getElementById('event-meta').textContent =
       [ev.event_date, ev.location].filter(Boolean).join('　');

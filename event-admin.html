@@ -293,7 +293,7 @@ async function initLiff() {
   try {
     setLoadingText('讀取設定中…');
     const { data: liffRow, error: liffErr } = await withTimeout(
-      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'event_admin').maybeSingle(),
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
       10000, 'liff_apps lookup'
     );
     if (liffErr || !liffRow || !liffRow.liff_id) {
@@ -397,7 +397,6 @@ function renderEventList() {
         <span class="event-status ${ev.is_active ? 'active' : 'inactive'}">${ev.is_active ? '啟用中' : '已停用'}</span>
       </div>
       <div class="event-meta">${ev.event_date || '日期未定'}${ev.location ? '・📍 ' + escapeHtml(ev.location) : ''}</div>
-      <div class="event-meta">${isValidLiffId(ev.liff_id) ? '已建立 LINE 連結' : '⚠️ 尚未建立 LINE 連結，請於後台「管理活動」重新產生'}</div>
       <div class="event-actions">
         <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
         <button type="button" class="btn-text" data-action="toggle">${ev.is_active ? '停用' : '啟用'}</button>

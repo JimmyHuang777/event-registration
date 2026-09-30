@@ -137,30 +137,30 @@ async function callApi(action, extra) {
 }
 
 // ---- Menu entries: which flag from get_menu controls each one,
-// which liff_apps `purpose` supplies its link, and how it's shown. ----
+// which page it opens, and how it's shown. ----
 const MENU_ENTRIES = [
   {
-    flag: 'show_tasks', purpose: 'tasks',
+    flag: 'show_tasks', href: 'tasks.html',
     title: '了愿生活圈 Task Roster', desc: '認領、查看今日與所有組內的行功了愿',
     color: '#2E90FA', icon: '📋', section: 'member',
   },
   {
-    flag: 'show_flows', purpose: 'activity_flow',
+    flag: 'show_flows', href: 'activity-flow.html',
     title: '開班資訊表 Activity Flow', desc: '查看班程的開班資訊與課程流程',
     color: '#6B5FB4', icon: '📅', section: 'member',
   },
   {
-    flag: 'is_job_admin', purpose: 'tasks_admin',
+    flag: 'is_job_admin', href: 'tasks-admin.html',
     title: '行功了愿管理 Job Admin', desc: '建立與編輯行功了愿範本',
     color: '#F79009', icon: '🛠️', section: 'admin',
   },
   {
-    flag: 'is_flow_admin', purpose: 'activity_flow_admin',
+    flag: 'is_flow_admin', href: 'activity-flow-admin.html',
     title: '開班課程表 Flow Admin', desc: '建立與編輯開班資訊表',
     color: '#F79009', icon: '🛠️', section: 'admin',
   },
   {
-    flag: 'is_event_admin', purpose: 'event_admin',
+    flag: 'is_event_admin', href: 'event-admin.html',
     title: '活動管理 Event Admin', desc: '建立與編輯活動',
     color: '#F79009', icon: '🛠️', section: 'admin',
   },
@@ -194,29 +194,21 @@ async function renderMenu(menuData) {
     return;
   }
 
-  const purposes = wanted.map(e => e.purpose);
-  const liffByPurpose = {};
-  if (purposes.length > 0) {
-    const { data: liffRows } = await supabasePublic.from('liff_apps').select('purpose, liff_id').in('purpose', purposes);
-    (liffRows || []).forEach(r => { liffByPurpose[r.purpose] = r.liff_id; });
-  }
-
   const lastSection = { value: null };
 
   wanted.forEach(entry => {
     appendSectionLabel(listEl, entry.section === 'admin' ? '管理功能 Admin' : '一般功能', lastSection);
 
-    const liffId = liffByPurpose[entry.purpose];
-    const card = document.createElement(liffId ? 'a' : 'div');
+    const card = document.createElement('a');
     card.className = 'menu-card';
-    if (liffId) card.href = 'https://liff.line.me/' + liffId;
+    card.href = entry.href;
     card.innerHTML = `
       <div class="menu-icon" style="background:${entry.color};">${entry.icon}</div>
       <div class="menu-body">
         <div class="title">${entry.title}</div>
-        <div class="desc">${liffId ? entry.desc : '此功能尚未設定 LINE 連結，請聯繫管理員'}</div>
+        <div class="desc">${entry.desc}</div>
       </div>
-      <div class="menu-arrow">${liffId ? '›' : ''}</div>
+      <div class="menu-arrow">›</div>
     `;
     listEl.appendChild(card);
   });
@@ -227,7 +219,7 @@ async function renderMenu(menuData) {
     events.forEach(ev => {
       const card = document.createElement('a');
       card.className = 'menu-card';
-      card.href = 'https://liff.line.me/' + ev.liff_id;
+      card.href = 'index.html?event=' + encodeURIComponent(ev.slug);
       const metaBits = [ev.event_date, ev.location].filter(Boolean).join(' · ');
       card.innerHTML = `
         <div class="menu-icon" style="background:#06C755;">🎫</div>
@@ -248,12 +240,12 @@ async function renderMenu(menuData) {
     altars.forEach(a => {
       const card = document.createElement('a');
       card.className = 'menu-card';
-      card.href = 'https://liff.line.me/' + a.liff_id;
+      card.href = 'altar-hub.html?altar=' + encodeURIComponent(a.id);
       card.innerHTML = `
         <div class="menu-icon" style="background:#D97706;">⛩️</div>
         <div class="menu-body">
           <div class="title">${escapeHtml(a.name)}</div>
-          <div class="desc">天廚／佛堂／庶務</div>
+          <div class="desc">天廚／佛堂／庶務／住壇</div>
         </div>
         <div class="menu-arrow">›</div>
       `;

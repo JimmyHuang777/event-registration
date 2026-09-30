@@ -586,7 +586,7 @@ async function initLiff() {
   try {
     setLoadingText('讀取設定中…');
     const { data: liffRow, error: liffErr } = await withTimeout(
-      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'kitchen').maybeSingle(),
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
       10000, 'liff_apps lookup'
     );
     if (liffErr || !liffRow || !liffRow.liff_id) {

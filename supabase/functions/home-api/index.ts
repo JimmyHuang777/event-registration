@@ -207,10 +207,13 @@ serve(async (req) => {
     // templates and flows, via event_groups). ----
     const { data: eventRows } = await supabase
       .from("events")
-      .select("id, name, event_date, location, liff_id, altar_id")
+      .select("id, name, slug, event_date, location, altar_id")
       .eq("is_active", true)
       .order("event_date", { ascending: true });
-    const linkedEvents = (eventRows || []).filter((e: any) => e.liff_id && /^\d+-[A-Za-z0-9]+$/.test(e.liff_id));
+    // No liff_id needed any more: every event opens through the ONE shared
+    // events LIFF app (home.html builds the link from slug), so an event
+    // shows up here as soon as it is active and visible to the member.
+    const linkedEvents = eventRows || [];
     const linkedEventIds = linkedEvents.map((e: any) => e.id);
 
     let eventGroupsByEvent: Record<string, string[]> = {};
@@ -234,7 +237,7 @@ serve(async (req) => {
         if (!groups || groups.length === 0) return true; // public event
         return groups.some((gid) => myGroupIds.has(gid));
       })
-      .map((e: any) => ({ id: e.id, name: e.name, event_date: e.event_date, location: e.location, liff_id: e.liff_id }));
+      .map((e: any) => ({ id: e.id, name: e.name, slug: e.slug, event_date: e.event_date, location: e.location }));
 
     // ---- Every altar the caller belongs to on any of its 3 teams,
     // that already has its own LINE link ----
@@ -253,11 +256,11 @@ serve(async (req) => {
     if (myAltarIds.size > 0) {
       const { data: altarRows } = await supabase
         .from("altars")
-        .select("id, name, liff_id")
+        .select("id, name")
         .in("id", [...myAltarIds]);
-      altars = (altarRows || [])
-        .filter((a: any) => a.liff_id)
-        .map((a: any) => ({ id: a.id, name: a.name, liff_id: a.liff_id }));
+      // No per-altar liff_id needed: every altar opens through the ONE
+      // shared altar-hub LIFF app (home.html builds the link from id).
+      altars = (altarRows || []).map((a: any) => ({ id: a.id, name: a.name }));
     }
 
     return json({

@@ -10,14 +10,8 @@
 // only LINE accounts listed in event_admins may use any action
 // beyond "whoami".
 //
-// Creating a new event here also auto-creates its registration LIFF
-// link (same LINE LIFF API call create-liff-app makes for "event
-// mode"), since this function has no Supabase Auth session to hand
-// create-liff-app the way the dashboard does. If that call fails for
-// any reason, the event is still created without a link — same
-// state as an event made before a link existed, so the dashboard's
-// existing "重新產生連結 Regenerate link" button on that event still
-// covers it.
+// Events no longer have their own LIFF links: the whole system runs on
+// one Home LIFF app and Home links to index.html?event=<slug>.
 //
 // Actions:
 //   whoami             — registers/looks up the caller's `users` row
@@ -25,7 +19,7 @@
 //   list_events        — every event with its group_ids, for the
 //                        list/edit screens.
 //   list_groups        — every group, for the checkbox list.
-//   save_event         — create (+ auto-create LIFF link) or update
+//   save_event         — create or update
 //                        an event (+ sync group links).
 //   toggle_event_active — flip an event's is_active flag.
 //   delete_event       — delete an event.
@@ -47,8 +41,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LINE_CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID")!;
-const LINE_CHANNEL_SECRET = Deno.env.get("LINE_CHANNEL_SECRET")!;
-const LIFF_ENDPOINT_BASE_URL = Deno.env.get("LIFF_ENDPOINT_BASE_URL")!;
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -75,74 +67,6 @@ async function verifyLineToken(idToken: string) {
   const data = await res.json();
   if (!data.sub) return null;
   return data as { sub: string; name?: string; picture?: string };
-}
-
-// ---- Same LINE LIFF API calls create-liff-app makes for "event
-// mode", duplicated here rather than calling that function, since
-// this function authenticates the caller a different way (LINE ID
-// token + event_admins, not a Supabase Auth session). ----
-async function getLineChannelAccessToken() {
-  const res = await fetch("https://api.line.me/v2/oauth/accessToken", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: LINE_CHANNEL_ID,
-      client_secret: LINE_CHANNEL_SECRET,
-    }),
-  });
-  if (!res.ok) throw new Error("Failed to get LINE channel access token: " + (await res.text()));
-  const data = await res.json();
-  return data.access_token as string;
-}
-
-async function createLiffApp(channelAccessToken: string, endpointUrl: string, description: string) {
-  const res = await fetch("https://api.line.me/liff/v1/apps", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + channelAccessToken,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      view: { type: "full", url: endpointUrl },
-      description: description.slice(0, 100),
-      features: { ble: false },
-      scope: ["profile", "openid"],
-      botPrompt: "normal",
-    }),
-  });
-  if (!res.ok) throw new Error("LINE LIFF API error: " + (await res.text()));
-  const data = await res.json();
-  return data.liffId as string;
-}
-
-// Gets the one shared "events" LIFF app, creating it the first time
-// it's ever needed. Every event uses this same liffId forever — the
-// specific event is told apart by ?event=<slug> on the share link
-// (see create-liff-app's fuller comment on why). This keeps event
-// creation from ever consuming one of LINE's 30-per-channel slots.
-async function getOrCreateSharedLiffApp(
-  sharedPurpose: "events_shared" | "altar_hub_shared",
-  endpointPath: string,
-  description: string,
-): Promise<string> {
-  const { data: existing } = await supabase
-    .from("liff_apps")
-    .select("liff_id")
-    .eq("purpose", sharedPurpose)
-    .maybeSingle();
-  if (existing?.liff_id) return existing.liff_id as string;
-
-  const endpointUrl = LIFF_ENDPOINT_BASE_URL.replace(/\/?$/, "/") + endpointPath + "?v=" + Date.now();
-  const channelAccessToken = await getLineChannelAccessToken();
-  const liffId = await createLiffApp(channelAccessToken, endpointUrl, description);
-
-  const { error: upsertErr } = await supabase
-    .from("liff_apps")
-    .upsert({ purpose: sharedPurpose, liff_id: liffId, updated_at: new Date().toISOString() }, { onConflict: "purpose" });
-  if (upsertErr) throw new Error(upsertErr.message);
-
-  return liffId;
 }
 
 const SLUG_RE = /^[a-z0-9-]+$/;
@@ -283,25 +207,7 @@ serve(async (req) => {
 
         await syncEventGroups(newEvent.id, groupIds);
 
-        // Best-effort: point this event at the shared "events" LIFF
-        // app (see getOrCreateSharedLiffApp — same one every event
-        // uses, created once ever; the event is told apart by
-        // ?event=<slug> on the share link, not by a dedicated app).
-        // A failure here does NOT fail event creation — the event is
-        // just left without a link, same as an event created before
-        // this existed, and can still be generated from the
-        // dashboard's "重新產生連結" button.
-        let liffWarning: string | null = null;
-        try {
-          const liffId = await getOrCreateSharedLiffApp("events_shared", "", "活動報名 Event Registration");
-          const { error: liffUpdateErr } = await supabase.from("events").update({ liff_id: liffId }).eq("id", newEvent.id);
-          if (liffUpdateErr) liffWarning = "活動已建立，但儲存 LINE 連結時發生錯誤：" + liffUpdateErr.message;
-          else newEvent.liff_id = liffId;
-        } catch (liffErr) {
-          liffWarning = "活動已建立，但自動產生 LINE 連結失敗，請於後台使用「重新產生連結」。(" + String(liffErr) + ")";
-        }
-
-        return json({ ok: true, event: newEvent, warning: liffWarning });
+        return json({ ok: true, event: newEvent });
       }
 
       // ---- Toggle active/inactive ----
@@ -317,9 +223,6 @@ serve(async (req) => {
       case "delete_event": {
         const { id } = body;
         if (!id) return json({ error: "Missing id." }, 400);
-        // Note: no LIFF app to clean up here — every event shares the
-        // ONE "events" LIFF app (see getOrCreateSharedLiffApp), so
-        // deleting one event's row must never touch it.
         const { error } = await supabase.from("events").delete().eq("id", id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
