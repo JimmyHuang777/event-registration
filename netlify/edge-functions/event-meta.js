@@ -26,7 +26,39 @@ export default async (request, context) => {
   if (!contentType.includes("text/html")) return response;
 
   const url = new URL(request.url);
-  const slug = url.searchParams.get("event");
+
+  // Only the event-registration page itself (served at the site root)
+  // should ever have its title/OG tags rewritten. This function is
+  // registered on "/*" (every path), and it used to overwrite <title>
+  // unconditionally with the generic "活動報名 Event Registration"
+  // default whenever there was no ?event= in the URL — which is true
+  // of EVERY other page (home.html, tasks.html, altar-hub.html, ...).
+  // That's why Home kept showing the wrong title in LINE no matter how
+  // many times its LIFF link was regenerated: it was never a caching
+  // problem, this function was stomping each page's own correct
+  // <title> at the edge, before it ever reached the browser.
+  const isEventRegistrationPage = url.pathname === "/" || url.pathname === "/index.html";
+  if (!isEventRegistrationPage) return response;
+
+  let slug = url.searchParams.get("event");
+
+  // Every event now opens through ONE shared LIFF app (see
+  // create-liff-app / index.html's getEventSlugFromUrl), so the real
+  // event slug usually arrives wrapped inside LINE's `liff.state` param
+  // rather than as a direct ?event= — unwrap it the same way the page's
+  // own JS does, so event-specific titles/previews keep working.
+  if (!slug) {
+    const state = url.searchParams.get("liff.state");
+    if (state) {
+      try {
+        const decoded = decodeURIComponent(state);
+        const queryPart = decoded.includes("?") ? decoded.split("?").slice(1).join("?") : decoded;
+        slug = new URLSearchParams(queryPart).get("event");
+      } catch (err) {
+        slug = null;
+      }
+    }
+  }
 
   let title = "活動報名 Event Registration";
   let description = "請點此完成報名";
