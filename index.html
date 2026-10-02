@@ -552,12 +552,6 @@ function attendeeBlockHTML(key, prefillName) {
         <span class="attendee-block-title">Person</span>
         <button type="button" class="remove-attendee-btn" style="display:none;">移除 Remove</button>
       </div>
-      <div class="fill-bar" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
-        <button type="button" class="fill-self-btn" style="padding:8px 12px; border:1px solid var(--line-green); color:var(--line-green); background:#fff; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;">帶入個人資訊</button>
-        <select class="fill-family-select" style="padding:8px 10px; border:1px solid var(--line-green); color:var(--line-green); background:#fff; border-radius:8px; font-size:13px; font-weight:700; max-width:100%;">
-          <option value="">帶入親友資訊…</option>
-        </select>
-      </div>
       <div class="field">
         <label>姓名 Full name</label>
         <input type="text" id="att-name-${key}" value="${escapeHtml(prefillName || '')}" required>
@@ -593,7 +587,6 @@ function addAttendeeBlock(prefillName) {
   document.getElementById('attendee-blocks').appendChild(blockEl);
   document.getElementById('att-dynamic-' + key).innerHTML = dynamicFieldsHTML(key);
   updateAttendeeBlockChrome();
-  if (typeof refreshFamilySelects === 'function') refreshFamilySelects();
   return key;
 }
 
@@ -605,88 +598,6 @@ document.getElementById('attendee-blocks').addEventListener('click', (e) => {
 });
 
 document.getElementById('add-attendee-btn').addEventListener('click', () => addAttendeeBlock(''));
-
-/* ---------- 帶入個人資訊 / 帶入親友資訊 ---------- */
-
-const PROFILE_API_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/profile-api';
-let myProfile = null;
-let myFamily = [];
-
-async function loadMyProfileData() {
-  try {
-    const res = await fetch(PROFILE_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_all', idToken }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'failed');
-    myProfile = data.profile || null;
-    myFamily = data.family || [];
-  } catch (err) {
-    console.warn('profile load failed (fill buttons stay empty):', err);
-  }
-  refreshFamilySelects();
-}
-
-function refreshFamilySelects() {
-  document.querySelectorAll('.fill-family-select').forEach(sel => {
-    const keep = sel.value;
-    sel.innerHTML = '<option value="">帶入親友資訊…</option>' +
-      myFamily.map(m => `<option value="${m.id}">${escapeHtml(m.full_name)}（${escapeHtml(m.relationship)}）</option>`).join('');
-    sel.value = keep;
-  });
-}
-
-// Which of a person's fields an event form_schema field should receive,
-// judged by the field's label (e.g. a select labelled "性別").
-function personValueForLabel(label, p) {
-  if (/性別/.test(label)) return p.gender;
-  if (/天職/.test(label)) return p.duty;
-  if (/佛堂/.test(label)) return p.shrine;
-  if (/公堂組別|壇/.test(label)) return p.altar_name;
-  return null;
-}
-
-function applyPersonToBlock(key, p) {
-  document.getElementById('att-name-' + key).value = p.full_name || '';
-  document.getElementById('att-phone-' + key).value = p.phone || '';
-  currentFormSchema.forEach(field => {
-    const value = personValueForLabel(field.label || '', p);
-    if (!value) return;
-    if (field.type === 'select') {
-      const sel = document.getElementById('att-input-' + key + '-' + field.id);
-      if (sel && Array.from(sel.options).some(o => o.value === value)) sel.value = value;
-    } else if (field.type === 'toggle') {
-      const fieldEl = document.getElementById('att-field-' + key + '-' + field.id);
-      if (!fieldEl) return;
-      const btn = Array.from(fieldEl.querySelectorAll('.toggle-btn')).find(b => b.dataset.value === value);
-      if (btn) btn.click();
-    } else {
-      const input = document.getElementById('att-input-' + key + '-' + field.id);
-      if (input) input.value = value;
-    }
-  });
-}
-
-document.getElementById('attendee-blocks').addEventListener('click', (e) => {
-  const btn = e.target.closest('.fill-self-btn');
-  if (!btn) return;
-  if (!myProfile) {
-    if (confirm('您還沒有填寫個人資訊。要前往「群聖家園 → 個人資訊」填寫嗎？')) location.href = 'profile.html';
-    return;
-  }
-  const key = btn.closest('.attendee-block').dataset.blockKey;
-  applyPersonToBlock(key, myProfile);
-});
-
-document.getElementById('attendee-blocks').addEventListener('change', (e) => {
-  const sel = e.target.closest('.fill-family-select');
-  if (!sel || !sel.value) return;
-  const m = myFamily.find(x => x.id === sel.value);
-  if (m) applyPersonToBlock(sel.closest('.attendee-block').dataset.blockKey, m);
-  sel.value = '';
-});
 
 /* ---------- Existing registrations (already-submitted attendees) ---------- */
 
@@ -810,18 +721,6 @@ async function initLiff() {
     if (!currentEventSlug) {
       // The site root is the endpoint of the ONE LIFF app (Home), so opening
       // the Home link with no event lands here — send it to the Home page.
-      // LINE hands the LIFF session (login/auth params) to the FIRST page it
-      // loads, and only liff.init() consumes it — so initialise LIFF here
-      // before leaving, otherwise home.html's own liff.init() hangs.
-      try {
-        const { data: homeRow } = await withTimeout(
-          supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
-          10000, 'home liff lookup'
-        );
-        if (homeRow && homeRow.liff_id) {
-          await withTimeout(liff.init({ liffId: homeRow.liff_id }), 10000, 'liff.init()');
-        }
-      } catch (e) { console.warn('pre-redirect liff.init failed', e); }
       location.replace('home.html');
       return;
     }
@@ -931,7 +830,6 @@ async function loadExistingRegistration() {
 
   // Prefill the very first attendee block's name from the LINE profile —
   // it was created empty (pre-login) in initLiff(), so 'new0' is safe here.
-  await loadMyProfileData();
   const firstNameInput = document.getElementById('att-name-new0');
   if (firstNameInput && !firstNameInput.value) firstNameInput.value = lineProfile.displayName;
 }

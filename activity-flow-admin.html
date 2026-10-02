@@ -245,11 +245,7 @@
         <button type="button" class="btn-add" id="add-item-btn">＋ 新增項目 Add item</button>
       </div>
 
-            <div class="field">
-        <label>所屬壇 Altar <span class="hint" style="margin:0;">選填，選定後該壇及其下層壇都能看到</span></label>
-        <select id="f-altar" style="width:100%; padding:11px 12px; border:1px solid var(--line, #E5E7EB); border-radius:10px; font-size:15px; background:#fff;"><option value="">（不限定壇）</option></select>
-      </div>
-<div class="field">
+      <div class="field">
         <label>適用群組 Groups <span class="hint" style="margin:0;">選填，不勾選則所有人都能看到</span></label>
         <div class="group-chip-list" id="group-chip-list"></div>
       </div>
@@ -309,37 +305,6 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
-}
-
-// ---- 所屬壇 picker (same tree as the Dashboard's) ----
-let allAltarsCache = null;
-async function fillAltarSelect(selectedId) {
-  const sel = document.getElementById('f-altar');
-  sel.dataset.ready = '0';
-  sel.innerHTML = '<option value="">載入中…</option>';
-  try {
-    if (!allAltarsCache) allAltarsCache = (await callApi('list_altars')).altars || [];
-  } catch (e) {
-    sel.innerHTML = '<option value="">（無法載入壇）</option>';
-    return;
-  }
-  const byParent = {};
-  allAltarsCache.forEach(a => { (byParent[a.parent_id || ''] = byParent[a.parent_id || ''] || []).push(a); });
-  const opts = ['<option value="">（不限定壇）</option>'];
-  const walk = (pid, depth) => (byParent[pid] || []).forEach(a => {
-    opts.push('<option value="' + a.id + '">' + '\u3000'.repeat(depth) + (depth ? '└ ' : '') + escapeHtml(a.name) + '</option>');
-    walk(a.id, depth + 1);
-  });
-  walk('', 0);
-  sel.innerHTML = opts.join('');
-  sel.value = selectedId || '';
-  sel.dataset.ready = '1';
-}
-// undefined (= leave unchanged on the server) until the list has loaded,
-// so saving too early can never wipe an existing altar.
-function altarValueForSave() {
-  const sel = document.getElementById('f-altar');
-  return sel.dataset.ready === '1' ? (sel.value || null) : undefined;
 }
 
 async function callApi(action, extra = {}) {
@@ -742,7 +707,6 @@ function openForm(flow) {
   document.getElementById('f-end-date').value = flow ? flow.end_date : '';
   document.getElementById('f-location').value = flow ? (flow.location || '') : '';
   document.getElementById('f-address').value = flow ? (flow.address || '') : '';
-  fillAltarSelect(flow ? (flow.altar_id || '') : '');
   updateDatePreview();
 
   itemRowCount = 0;
@@ -799,7 +763,6 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     facilitator: document.getElementById('f-facilitator').value.trim() || null,
     location: document.getElementById('f-location').value.trim() || null,
     address: document.getElementById('f-address').value.trim() || null,
-    altar_id: altarValueForSave(),
     start_date, end_date,
     items, group_ids,
   };

@@ -73,6 +73,23 @@ async function verifyLineToken(idToken: string) {
 
 const RECURRENCES = ["daily", "weekly", "monthly", "once"];
 
+// Same visibility rule the member page enforces (tasks-api isTemplateVisible):
+// visible via the template's altar hierarchy, OR the template has no group
+// limits (public), OR the user belongs to one of its groups.
+async function userCanSeeTemplate(templateId: string, userId: string) {
+  const { data: template } = await supabase.from("task_templates").select("altar_id").eq("id", templateId).maybeSingle();
+  if (template?.altar_id) {
+    const { data, error } = await supabase.rpc("is_altar_visible_to_user", { p_altar_id: template.altar_id, p_user_id: userId });
+    if (!error && data) return true;
+  }
+  const { data: links } = await supabase.from("task_template_groups").select("group_id").eq("template_id", templateId);
+  if (!links || links.length === 0) return true;
+  const { data: mem } = await supabase
+    .from("task_group_members").select("group_id")
+    .eq("user_id", userId).in("group_id", links.map((r: any) => r.group_id));
+  return !!(mem && mem.length > 0);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -132,6 +149,105 @@ serve(async (req) => {
     }
 
     switch (action) {
+      // ---- Upcoming instances (next 90 days) with sub-task status, for assigning ----
+      case "list_upcoming": {
+        const from = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+        const to = new Date(Date.now() + 8 * 3600 * 1000 + 90 * 86400000).toISOString().slice(0, 10);
+        await supabase.rpc("ensure_task_instances", { p_from: from, p_to: to });
+
+        const { data: insts, error: instErr } = await supabase
+          .from("task_instances")
+          .select("id, occurrence_date, template_id, task_templates ( title, place, is_active )")
+          .gte("occurrence_date", from).lte("occurrence_date", to)
+          .order("occurrence_date", { ascending: true });
+        if (instErr) return json({ error: instErr.message }, 400);
+        const active = (insts || []).filter((i: any) => i.task_templates && i.task_templates.is_active);
+        if (active.length === 0) return json({ instances: [] });
+
+        const tplIds = [...new Set(active.map((i: any) => i.template_id))];
+        const instIds = active.map((i: any) => i.id);
+        const { data: subs } = await supabase
+          .from("task_subtask_templates").select("id, template_id, title, sort_order, section")
+          .in("template_id", tplIds).order("sort_order", { ascending: true });
+        const { data: comps } = await supabase
+          .from("task_subtask_completions")
+          .select("id, subtask_template_id, instance_id, status, assigned_user_id, users!assigned_user_id ( display_name )")
+          .in("instance_id", instIds);
+
+        const instances = active
+          .map((i: any) => ({
+            instance_id: i.id,
+            template_id: i.template_id,
+            date: i.occurrence_date,
+            title: i.task_templates.title,
+            place: i.task_templates.place || null,
+            subtasks: (subs || []).filter((x: any) => x.template_id === i.template_id).map((x: any) => {
+              const c = (comps || []).find((k: any) => k.subtask_template_id === x.id && k.instance_id === i.id);
+              const st = c ? c.status : "unassigned";
+              const on = st === "taken" || st === "completed";
+              return {
+                subtask_template_id: x.id,
+                title: x.title,
+                section: x.section || null,
+                status: st,
+                completion_id: c ? c.id : null,
+                assigned_name: c && on ? (c as any).users?.display_name || null : null,
+              };
+            }),
+          }))
+          .filter((i: any) => i.subtasks.length > 0);
+        return json({ instances });
+      }
+
+      // ---- Find people to assign; flags whether each can see the job ----
+      case "search_users": {
+        const q = String(body.query || "").trim().replace(/[,()%]/g, " ");
+        if (!q || !body.template_id) return json({ users: [] });
+        const { data: found, error } = await supabase
+          .from("users").select("id, display_name, phone")
+          .or(`display_name.ilike.%${q}%,phone.ilike.%${q}%`).limit(15);
+        if (error) return json({ error: error.message }, 400);
+        const users = [];
+        for (const u of found || []) {
+          users.push({ ...u, eligible: await userCanSeeTemplate(body.template_id, u.id) });
+        }
+        return json({ users });
+      }
+
+      // ---- Assign (or re-assign) one sub-task on one instance ----
+      case "assign_subtask": {
+        const { instance_id, subtask_template_id, user_id, force } = body;
+        if (!instance_id || !subtask_template_id || !user_id) return json({ error: "Missing fields." }, 400);
+        const { data: inst } = await supabase.from("task_instances").select("id, template_id").eq("id", instance_id).maybeSingle();
+        const { data: sub } = await supabase.from("task_subtask_templates").select("id, template_id").eq("id", subtask_template_id).maybeSingle();
+        if (!inst || !sub || sub.template_id !== inst.template_id) return json({ error: "找不到這個子項目。" }, 404);
+        if (!force && !(await userCanSeeTemplate(inst.template_id, user_id))) {
+          return json({ error: "此人不在這項工作的適用群組／壇內。", not_eligible: true }, 409);
+        }
+        const { data: existing } = await supabase
+          .from("task_subtask_completions").select("id, status")
+          .eq("instance_id", instance_id).eq("subtask_template_id", subtask_template_id).maybeSingle();
+        if (existing?.status === "completed") return json({ error: "這個子項目已經完成了。" }, 409);
+        if (existing) {
+          const { error } = await supabase.from("task_subtask_completions")
+            .update({ assigned_user_id: user_id, status: "taken", completed_by: null, completed_at: null }).eq("id", existing.id);
+          if (error) return json({ error: error.message }, 400);
+        } else {
+          const { error } = await supabase.from("task_subtask_completions")
+            .insert({ instance_id, subtask_template_id, assigned_user_id: user_id, status: "taken" });
+          if (error) return json({ error: error.message }, 400);
+        }
+        return json({ ok: true });
+      }
+
+      // ---- Take an assignment back (returns to 未指派) ----
+      case "unassign_subtask": {
+        if (!body.completion_id) return json({ error: "Missing completion_id." }, 400);
+        const { error } = await supabase.from("task_subtask_completions").delete().eq("id", body.completion_id).eq("status", "taken");
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
       // ---- List every job template, with its subtasks + groups ----
       case "list_templates": {
         const { data: templates, error } = await supabase

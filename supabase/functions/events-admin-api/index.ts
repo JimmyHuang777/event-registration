@@ -149,7 +149,7 @@ serve(async (req) => {
       case "list_events": {
         const { data: events, error } = await supabase
           .from("events")
-          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging")
+          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id")
           .order("event_date", { ascending: false });
         if (error) return json({ error: error.message }, 400);
 
@@ -163,13 +163,6 @@ serve(async (req) => {
         }
         const withGroups = (events || []).map((e: any) => ({ ...e, group_ids: groupsByEvent[e.id] || [] }));
         return json({ events: withGroups });
-      }
-
-      // ---- All altars (id, name, parent) for the 所屬壇 picker ----
-      case "list_altars": {
-        const { data, error } = await supabase.from("altars").select("id, name, parent_id").order("created_at", { ascending: true });
-        if (error) return json({ error: error.message }, 400);
-        return json({ altars: data || [] });
       }
 
       // ---- List every group ----
@@ -187,12 +180,6 @@ serve(async (req) => {
         const eventDate = body.event_date || null;
         const location = (body.location || "").trim() || null;
         const formSchema = Array.isArray(body.form_schema) ? body.form_schema : [];
-        const isFeatured = !!body.is_featured;
-        // Optional extras: only touched when the caller sends them.
-        const extras: Record<string, unknown> = {};
-        if ("altar_id" in body) extras.altar_id = body.altar_id || null;
-        if ("offers_transport" in body) extras.offers_transport = !!body.offers_transport;
-        if ("offers_lodging" in body) extras.offers_lodging = !!body.offers_lodging;
         const groupIds: string[] = Array.isArray(body.group_ids) ? body.group_ids : [];
 
         if (!name) return json({ error: "請填寫活動名稱。" }, 400);
@@ -200,7 +187,7 @@ serve(async (req) => {
         if (editingId) {
           const { error: updateErr } = await supabase
             .from("events")
-            .update({ name, description, event_date: eventDate, location, form_schema: formSchema, is_featured: isFeatured, ...extras })
+            .update({ name, description, event_date: eventDate, location, form_schema: formSchema })
             .eq("id", editingId);
           if (updateErr) return json({ error: updateErr.message }, 400);
           await syncEventGroups(editingId, groupIds);
@@ -213,7 +200,7 @@ serve(async (req) => {
 
         const { data: newEvent, error: insertErr } = await supabase
           .from("events")
-          .insert({ name, description, event_date: eventDate, location, slug, form_schema: formSchema, is_featured: isFeatured, ...extras })
+          .insert({ name, description, event_date: eventDate, location, slug, form_schema: formSchema })
           .select()
           .single();
         if (insertErr) return json({ error: insertErr.message }, 400);

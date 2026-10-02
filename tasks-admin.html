@@ -53,6 +53,21 @@
     background: none; border: 1.5px dashed #D6D9DE; border-radius: 8px; padding: 9px;
     width: 100%; color: var(--ink-soft); font-size: 13px; cursor: pointer; font-family: inherit; margin-bottom: 14px;
   }
+  #assign-screen { display: none; flex-direction: column; flex: 1; }
+  .asg-date { font-size: 13px; font-weight: 800; color: var(--ink-soft); margin: 18px 2px 8px; }
+  .asg-card { background: var(--paper); border: 1px solid var(--canvas); border-radius: 14px; padding: 14px; margin-bottom: 10px; }
+  .asg-title { font-size: 15px; font-weight: 800; }
+  .asg-place { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .asg-section { font-size: 14px; font-weight: 800; color: #067A37; background: #E7F8EE; border-left: 4px solid #06C755; border-radius: 6px; margin: 10px 0 2px; padding: 5px 8px; }
+  .asg-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--canvas); font-size: 13.5px; flex-wrap: wrap; }
+  .asg-row .t { flex: 1 1 40%; }
+  .asg-row .by { font-size: 12px; color: var(--ink-soft); }
+  .asg-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #F3F4F6; color: #6B7280; }
+  .asg-badge.taken { background: #DBEAFE; color: #1D4ED8; }
+  .asg-badge.completed { background: #FEF3C7; color: #B45309; }
+  .asg-badge.incomplete { background: #FEE2E2; color: #B91C1C; }
+  .asg-pick { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--canvas); font-size: 14px; }
+  .asg-no { font-size: 11px; color: #B45309; background: #FEF3C7; padding: 1px 6px; border-radius: 10px; margin-left: 6px; }
   .btn-text { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 6px; font-family: inherit; }
   .btn-text.danger { color: var(--error); }
 
@@ -171,7 +186,30 @@
     </div>
     <div class="content">
       <button type="button" class="btn-primary new-job-btn" id="new-job-btn">＋ 新增工作 New Job</button>
+      <button type="button" class="btn-primary new-job-btn" id="open-assign-btn" style="background:#2563EB;">📅 近期排程／指派子項目</button>
       <div id="job-list"></div>
+    </div>
+  </div>
+
+  <div id="assign-screen">
+    <div class="header">
+      <a href="#" id="assign-back-btn" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">‹ 返回工作管理</a>
+      <h1 style="margin-top:6px;">近期排程 Upcoming</h1>
+      <p>未來 90 天，可指派、更換或取消每個子項目的負責人</p>
+    </div>
+    <div class="content" id="assign-list"></div>
+  </div>
+
+  <div id="assign-picker" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:20; align-items:flex-end;">
+    <div style="background:#fff; width:100%; max-height:80vh; overflow:auto; border-radius:16px 16px 0 0; padding:18px 16px 24px;">
+      <div style="font-weight:800; font-size:15px; margin-bottom:4px;">指派人員</div>
+      <div id="assign-picker-title" style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;"></div>
+      <input type="text" id="assign-picker-input" placeholder="輸入姓名或電話…" style="width:100%; padding:11px 12px; border:1.5px solid var(--canvas); border-radius:10px; font-size:15px;">
+      <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); margin:8px 0;">
+        <input type="checkbox" id="assign-picker-all"> 顯示所有人（含沒有此工作權限的人）
+      </label>
+      <div id="assign-picker-results"></div>
+      <button type="button" class="btn-text" id="assign-picker-close" style="margin-top:10px;">關閉</button>
     </div>
   </div>
 
@@ -305,10 +343,11 @@ const screens = {
   noAccess: document.getElementById('no-access-screen'),
   main: document.getElementById('main-screen'),
   form: document.getElementById('form-screen'),
+  assign: document.getElementById('assign-screen'),
 };
 function showScreen(name) {
   Object.entries(screens).forEach(([key, el]) => {
-    if (key === 'main' || key === 'form') { el.style.display = key === name ? 'flex' : 'none'; }
+    if (key === 'main' || key === 'form' || key === 'assign') { el.style.display = key === name ? 'flex' : 'none'; }
     else { el.classList.toggle('active', key === name); }
   });
 }
@@ -506,6 +545,108 @@ function renderJobList() {
     });
   });
 }
+
+/* ---------- 近期排程／指派子項目 ---------- */
+
+const ASG_STATUS = { unassigned: '未指派', taken: '已指派', completed: '已完成', incomplete: '未能完成' };
+let asgInstances = [];
+let asgCtx = null;
+let asgDebounce = null;
+
+async function openAssignScreen() {
+  showScreen('assign');
+  const listEl = document.getElementById('assign-list');
+  listEl.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { instances } = await callApi('list_upcoming');
+    asgInstances = instances || [];
+    renderAssignList();
+  } catch (err) {
+    listEl.innerHTML = '<div class="empty-note">載入失敗：' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderAssignList() {
+  const listEl = document.getElementById('assign-list');
+  if (asgInstances.length === 0) { listEl.innerHTML = '<div class="empty-note">未來 90 天沒有含子項目的排程。</div>'; return; }
+  let lastDate = null;
+  listEl.innerHTML = asgInstances.map(inst => {
+    const head = inst.date !== lastDate ? '<div class="asg-date">' + escapeHtml(inst.date) + '</div>' : '';
+    lastDate = inst.date;
+    let lastSec;
+    const rows = inst.subtasks.map(s => {
+      const sec = (s.section && s.section !== lastSec) ? '<div class="asg-section">' + escapeHtml(s.section) + '</div>' : '';
+      lastSec = s.section;
+      const btns = s.status === 'completed' ? '' :
+        '<button type="button" class="btn-text" data-act="assign">' + (s.status === 'taken' ? '更換' : '＋ 指派') + '</button>' +
+        (s.status === 'taken' && s.completion_id ? '<button type="button" class="btn-text danger" data-act="unassign">取消</button>' : '');
+      return sec + '<div class="asg-row" data-instance="' + inst.instance_id + '" data-sub="' + s.subtask_template_id + '" data-comp="' + (s.completion_id || '') + '">' +
+        '<span class="t">' + escapeHtml(s.title) + '</span><span class="asg-badge ' + s.status + '">' + (ASG_STATUS[s.status] || s.status) + '</span>' +
+        (s.assigned_name ? '<span class="by">' + escapeHtml(s.assigned_name) + '</span>' : '') + btns + '</div>';
+    }).join('');
+    return head + '<div class="asg-card" data-instance="' + inst.instance_id + '"><div class="asg-title">' + escapeHtml(inst.title) + '</div>' +
+      (inst.place ? '<div class="asg-place">📍 ' + escapeHtml(inst.place) + '</div>' : '') + rows + '</div>';
+  }).join('');
+}
+
+document.getElementById('assign-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const row = btn.closest('.asg-row');
+  const inst = asgInstances.find(i => i.instance_id === row.dataset.instance);
+  if (btn.dataset.act === 'unassign') {
+    if (!confirm('確定要取消這個子項目的指派嗎？')) return;
+    try { await callApi('unassign_subtask', { completion_id: row.dataset.comp }); await openAssignScreen(); }
+    catch (err) { alert('取消失敗：' + err.message); }
+    return;
+  }
+  asgCtx = { instanceId: row.dataset.instance, subtaskId: row.dataset.sub, templateId: inst.template_id };
+  document.getElementById('assign-picker-title').textContent = inst.title + '　›　' + row.querySelector('.t').textContent;
+  document.getElementById('assign-picker-input').value = '';
+  document.getElementById('assign-picker-all').checked = false;
+  document.getElementById('assign-picker-results').innerHTML = '';
+  document.getElementById('assign-picker').style.display = 'flex';
+  document.getElementById('assign-picker-input').focus();
+});
+
+async function runAssignPicker() {
+  const q = document.getElementById('assign-picker-input').value.trim();
+  const resEl = document.getElementById('assign-picker-results');
+  if (!q) { resEl.innerHTML = ''; return; }
+  try {
+    const { users } = await callApi('search_users', { query: q, template_id: asgCtx.templateId });
+    const showAll = document.getElementById('assign-picker-all').checked;
+    const shown = (users || []).filter(u => showAll || u.eligible);
+    if (shown.length === 0) {
+      resEl.innerHTML = '<div class="empty-note" style="padding:14px 0;">' + ((users || []).length ? '符合的人都沒有此工作的權限。勾選上方「顯示所有人」可強制指派。' : '找不到符合的人員。') + '</div>';
+      return;
+    }
+    resEl.innerHTML = shown.map(u => '<div class="asg-pick"><span>' + escapeHtml(u.display_name || '—') + '　' + escapeHtml(u.phone || '') +
+      (u.eligible ? '' : '<span class="asg-no">無權限</span>') + '</span><button type="button" class="btn-text" data-user="' + u.id + '" data-eligible="' + (u.eligible ? 1 : 0) + '">指派</button></div>').join('');
+  } catch (err) { resEl.innerHTML = '<div class="empty-note">' + escapeHtml(err.message) + '</div>'; }
+}
+document.getElementById('assign-picker-input').addEventListener('input', () => { clearTimeout(asgDebounce); asgDebounce = setTimeout(runAssignPicker, 300); });
+document.getElementById('assign-picker-all').addEventListener('change', runAssignPicker);
+document.getElementById('assign-picker-close').addEventListener('click', () => { document.getElementById('assign-picker').style.display = 'none'; });
+
+document.getElementById('assign-picker-results').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-user]');
+  if (!btn) return;
+  const eligible = btn.dataset.eligible === '1';
+  if (!eligible && !confirm('此人不在這項工作的適用群組／壇內，在 LINE 裡看不到這項工作（也無法完成它）。仍要指派嗎？')) return;
+  btn.disabled = true; btn.textContent = '指派中…';
+  try {
+    await callApi('assign_subtask', { instance_id: asgCtx.instanceId, subtask_template_id: asgCtx.subtaskId, user_id: btn.dataset.user, force: !eligible });
+    document.getElementById('assign-picker').style.display = 'none';
+    await openAssignScreen();
+  } catch (err) {
+    alert('指派失敗：' + err.message);
+    btn.disabled = false; btn.textContent = '指派';
+  }
+});
+
+document.getElementById('open-assign-btn').addEventListener('click', openAssignScreen);
+document.getElementById('assign-back-btn').addEventListener('click', (e) => { e.preventDefault(); showScreen('main'); });
 
 document.getElementById('new-job-btn').addEventListener('click', () => openForm(null));
 
