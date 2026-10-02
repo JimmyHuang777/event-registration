@@ -169,6 +169,13 @@ serve(async (req) => {
         return json({ templates: result });
       }
 
+      // ---- All altars (id, name, parent) for the 所屬壇 picker ----
+      case "list_altars": {
+        const { data, error } = await supabase.from("altars").select("id, name, parent_id").order("created_at", { ascending: true });
+        if (error) return json({ error: error.message }, 400);
+        return json({ altars: data || [] });
+      }
+
       // ---- All groups, for the checkbox list ----
       case "list_groups": {
         // altar_id/team/altars(name) let tasks-admin.html section the
@@ -224,6 +231,7 @@ serve(async (req) => {
           end_date: cleanEnd,
           is_featured: !!body.is_featured,
         };
+        if ("altar_id" in body) payload.altar_id = body.altar_id || null;
 
         let templateId = id || null;
         if (templateId) {

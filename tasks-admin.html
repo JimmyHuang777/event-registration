@@ -235,6 +235,10 @@
         <input type="text" id="f-place" placeholder="例：大殿 Main hall">
       </div>
       <div class="field">
+        <label>所屬壇 Altar <span class="hint" style="margin:0;">選填，選定後該壇及其下層壇都能看到</span></label>
+        <select id="f-altar" style="width:100%; padding:11px 12px; border:1px solid var(--line, #E5E7EB); border-radius:10px; font-size:15px; background:#fff;"><option value="">（不限定壇）</option></select>
+      </div>
+      <div class="field">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" id="f-featured" style="width:18px; height:18px;">
           <span>⭐ 顯示在「群聖家園」最上方的「近期重要班程」</span>
@@ -321,6 +325,37 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ---- 所屬壇 picker (same tree as the Dashboard's) ----
+let allAltarsCache = null;
+async function fillAltarSelect(selectedId) {
+  const sel = document.getElementById('f-altar');
+  sel.dataset.ready = '0';
+  sel.innerHTML = '<option value="">載入中…</option>';
+  try {
+    if (!allAltarsCache) allAltarsCache = (await callApi('list_altars')).altars || [];
+  } catch (e) {
+    sel.innerHTML = '<option value="">（無法載入壇）</option>';
+    return;
+  }
+  const byParent = {};
+  allAltarsCache.forEach(a => { (byParent[a.parent_id || ''] = byParent[a.parent_id || ''] || []).push(a); });
+  const opts = ['<option value="">（不限定壇）</option>'];
+  const walk = (pid, depth) => (byParent[pid] || []).forEach(a => {
+    opts.push('<option value="' + a.id + '">' + '\u3000'.repeat(depth) + (depth ? '└ ' : '') + escapeHtml(a.name) + '</option>');
+    walk(a.id, depth + 1);
+  });
+  walk('', 0);
+  sel.innerHTML = opts.join('');
+  sel.value = selectedId || '';
+  sel.dataset.ready = '1';
+}
+// undefined (= leave unchanged on the server) until the list has loaded,
+// so saving too early can never wipe an existing altar.
+function altarValueForSave() {
+  const sel = document.getElementById('f-altar');
+  return sel.dataset.ready === '1' ? (sel.value || null) : undefined;
 }
 
 async function callApi(action, extra = {}) {
@@ -622,6 +657,7 @@ function openForm(tpl) {
   document.getElementById('f-slots').value = tpl ? tpl.slots_per_instance : 1;
   document.getElementById('f-place').value = tpl ? (tpl.place || '') : '';
   document.getElementById('f-featured').checked = !!(tpl && tpl.is_featured);
+  fillAltarSelect(tpl ? (tpl.altar_id || '') : '');
   document.getElementById('f-start-date').value = (tpl && tpl.recurrence !== 'once') ? (tpl.start_date || '') : '';
   document.getElementById('f-end-date').value = (tpl && tpl.recurrence !== 'once') ? (tpl.end_date || '') : '';
   document.getElementById('f-once-date').value = (tpl && tpl.recurrence === 'once') ? (tpl.start_date || '') : '';
@@ -694,6 +730,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     slots_per_instance: parseInt(document.getElementById('f-slots').value, 10) || 1,
     place: document.getElementById('f-place').value.trim() || null,
     is_featured: document.getElementById('f-featured').checked,
+    altar_id: altarValueForSave(),
     start_date, end_date,
     subtasks, group_ids,
   };

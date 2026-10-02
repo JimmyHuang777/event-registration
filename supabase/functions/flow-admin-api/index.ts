@@ -169,6 +169,13 @@ serve(async (req) => {
         return json({ flows: result });
       }
 
+      // ---- All altars (id, name, parent) for the 所屬壇 picker ----
+      case "list_altars": {
+        const { data, error } = await supabase.from("altars").select("id, name, parent_id").order("created_at", { ascending: true });
+        if (error) return json({ error: error.message }, 400);
+        return json({ altars: data || [] });
+      }
+
       // ---- All groups, for the checkbox list ----
       case "list_groups": {
         const { data, error } = await supabase
@@ -274,6 +281,7 @@ serve(async (req) => {
           end_date,
           updated_at: new Date().toISOString(),
         };
+        if ("altar_id" in body) payload.altar_id = body.altar_id || null;
 
         let flowId = id || null;
         if (flowId) {
