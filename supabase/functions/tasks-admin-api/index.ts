@@ -147,7 +147,7 @@ serve(async (req) => {
         if (templateIds.length > 0) {
           const { data: subs, error: subsErr } = await supabase
             .from("task_subtask_templates")
-            .select("id, template_id, title, sort_order")
+            .select("id, template_id, title, sort_order, section")
             .in("template_id", templateIds)
             .order("sort_order", { ascending: true });
           if (subsErr) return json({ error: subsErr.message }, 400);
@@ -243,6 +243,7 @@ serve(async (req) => {
           .map((s: any, idx: number) => ({
             id: s && s.id ? s.id : null,
             title: ((s && s.title) || "").trim(),
+            section: ((s && s.section) || "").trim().slice(0, 60) || null,
             sort_order: idx,
           }))
           .filter((r: any) => r.title);
@@ -260,9 +261,9 @@ serve(async (req) => {
         }
         for (const row of rows) {
           if (row.id) {
-            await supabase.from("task_subtask_templates").update({ title: row.title, sort_order: row.sort_order }).eq("id", row.id);
+            await supabase.from("task_subtask_templates").update({ title: row.title, section: row.section, sort_order: row.sort_order }).eq("id", row.id);
           } else {
-            await supabase.from("task_subtask_templates").insert({ template_id: templateId, title: row.title, sort_order: row.sort_order });
+            await supabase.from("task_subtask_templates").insert({ template_id: templateId, title: row.title, section: row.section, sort_order: row.sort_order });
           }
         }
 
@@ -322,7 +323,7 @@ serve(async (req) => {
           start_date: start_date || null,
           end_date: end_date || null,
           subtasks: (Array.isArray(subtasks) ? subtasks : [])
-            .map((s: any) => ({ title: ((s && s.title) || "").trim() }))
+            .map((s: any) => ({ title: ((s && s.title) || "").trim(), section: ((s && s.section) || "").trim().slice(0, 60) || null }))
             .filter((s: any) => s.title),
           group_ids: Array.isArray(group_ids) ? group_ids : [],
           updated_at: new Date().toISOString(),

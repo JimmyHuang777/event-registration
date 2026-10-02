@@ -335,7 +335,7 @@ serve(async (req) => {
         if (templateIds.length > 0) {
           const { data: subs, error: subsErr } = await supabase
             .from("task_subtask_templates")
-            .select("id, template_id, title, sort_order")
+            .select("id, template_id, title, sort_order, section")
             .in("template_id", templateIds)
             .order("sort_order", { ascending: true });
           if (subsErr) return json({ error: subsErr.message }, 400);
@@ -360,6 +360,7 @@ serve(async (req) => {
             return {
               subtask_template_id: s.id,
               title: s.title,
+              section: s.section || null,
               status,
               assigned_name: state && activeOrDone ? state.users?.display_name || null : null,
               assigned_to_me: !!(state && existingUser && activeOrDone && state.assigned_user_id === existingUser.id),

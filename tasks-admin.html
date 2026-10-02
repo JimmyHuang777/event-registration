@@ -83,6 +83,11 @@
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
   .subtask-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .subtask-row.is-item.in-section { margin-left: 14px; }
+  .section-row { display: flex; gap: 8px; align-items: center; margin: 14px 0 8px; padding: 8px; background: var(--canvas); border-radius: 10px; }
+  .section-row input { flex: 1; font-weight: 700; }
+  .section-row .sec-add-btn { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; height: 36px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+  .section-row .remove-btn { background: var(--error-bg); color: var(--error); border: none; border-radius: 8px; width: 36px; height: 36px; font-size: 15px; cursor: pointer; }
   .subtask-row input { flex: 1; }
   .subtask-row .remove-btn {
     background: var(--error-bg); color: var(--error); border: none; border-radius: 8px;
@@ -248,6 +253,7 @@
         <label>子項目清單 Subtasks <span class="hint" style="margin:0;">選填</span></label>
         <div id="subtask-list"></div>
         <button type="button" class="btn-add" id="add-subtask-btn">＋ 新增子項目 Add subtask</button>
+        <button type="button" class="btn-add" id="add-section-btn" style="margin-top:8px;">＋ 新增分區 Add section</button>
       </div>
 
       <div class="field">
@@ -427,7 +433,7 @@ function renderJobList() {
         </div>
         <span class="job-status ${t.is_active ? 'active' : 'inactive'}">${t.is_active ? '啟用中' : '已停用'}</span>
       </div>
-      <div class="job-meta">${RECURRENCE_LABELS[t.recurrence] || t.recurrence}・需求 ${t.slots_per_instance} 人${t.place ? '・📍 ' + escapeHtml(t.place) : ''}${t.subtasks.length ? '・子項目 ' + t.subtasks.length + ' 項' : ''}</div>
+      <div class="job-meta">${RECURRENCE_LABELS[t.recurrence] || t.recurrence}・需求 ${t.slots_per_instance} 人${t.place ? '・📍 ' + escapeHtml(t.place) : ''}${t.subtasks.length ? '・子項目 ' + t.subtasks.length + ' 項' + (new Set(t.subtasks.map(x => x.section).filter(Boolean)).size ? '（' + new Set(t.subtasks.map(x => x.section).filter(Boolean)).size + ' 個分區）' : '') : ''}</div>
       <div class="job-actions">
         <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
         <button type="button" class="btn-text" data-action="toggle">${t.is_active ? '停用' : '啟用'}</button>
@@ -463,20 +469,87 @@ document.getElementById('new-job-btn').addEventListener('click', () => openForm(
 
 /* ---------- Form ---------- */
 
-function addSubtaskRow(prefill) {
+// The subtask list is a flat, ordered list of two kinds of rows: section
+// headers (.section-row) and items (.subtask-row). Every item belongs to the
+// section header above it (items before the first header have no section).
+function addSubtaskRow(prefill, afterEl) {
   const id = 'sb-' + (subtaskRowCount++);
   const wrap = document.createElement('div');
-  wrap.className = 'subtask-row';
+  wrap.className = 'subtask-row is-item';
   wrap.dataset.rowId = id;
   wrap.dataset.subtaskId = (prefill && prefill.id) || '';
   wrap.innerHTML = `
     <input type="text" class="sb-title" placeholder="例：關閉電燈" value="${prefill ? escapeHtml(prefill.title || '') : ''}">
     <button type="button" class="remove-btn">✕</button>
   `;
-  document.getElementById('subtask-list').appendChild(wrap);
-  wrap.querySelector('.remove-btn').addEventListener('click', () => wrap.remove());
+  const list = document.getElementById('subtask-list');
+  if (afterEl) afterEl.insertAdjacentElement('afterend', wrap); else list.appendChild(wrap);
+  wrap.querySelector('.remove-btn').addEventListener('click', () => { wrap.remove(); refreshSubtaskIndent(); });
+  refreshSubtaskIndent();
+  return wrap;
 }
+
+function addSectionRow(name) {
+  const wrap = document.createElement('div');
+  wrap.className = 'section-row';
+  wrap.innerHTML = `
+    <input type="text" class="sec-title" placeholder="分區名稱（例：開場前）" value="${escapeHtml(name || '')}">
+    <button type="button" class="sec-add-btn">＋ 項目</button>
+    <button type="button" class="remove-btn" title="移除此分區標題（項目會併入上一個分區）">✕</button>
+  `;
+  document.getElementById('subtask-list').appendChild(wrap);
+  wrap.querySelector('.sec-add-btn').addEventListener('click', () => {
+    // Insert right after the last item of this section.
+    let last = wrap;
+    while (last.nextElementSibling && last.nextElementSibling.classList.contains('is-item')) last = last.nextElementSibling;
+    const row = addSubtaskRow(null, last);
+    row.querySelector('.sb-title').focus();
+  });
+  wrap.querySelector('.remove-btn').addEventListener('click', () => { wrap.remove(); refreshSubtaskIndent(); });
+  refreshSubtaskIndent();
+  return wrap;
+}
+
+function refreshSubtaskIndent() {
+  let inSection = false;
+  document.querySelectorAll('#subtask-list > div').forEach(el => {
+    if (el.classList.contains('section-row')) inSection = true;
+    else el.classList.toggle('in-section', inSection);
+  });
+}
+
+// Fill the list from [{id?, title, section?}, ...] (already in order).
+function renderSubtaskList(subs) {
+  document.getElementById('subtask-list').innerHTML = '';
+  let current;
+  (subs || []).forEach(s => {
+    const sec = s.section || null;
+    if (sec && sec !== current) addSectionRow(sec);
+    current = sec;
+    addSubtaskRow(s);
+  });
+}
+
+// Reads the list back in order, tagging each item with its section.
+function collectSubtasks() {
+  const out = [];
+  let section = null;
+  document.querySelectorAll('#subtask-list > div').forEach(el => {
+    if (el.classList.contains('section-row')) {
+      section = el.querySelector('.sec-title').value.trim() || null;
+    } else {
+      const title = el.querySelector('.sb-title').value.trim();
+      if (title) out.push({ id: el.dataset.subtaskId || null, title, section });
+    }
+  });
+  return out;
+}
+
 document.getElementById('add-subtask-btn').addEventListener('click', () => addSubtaskRow());
+document.getElementById('add-section-btn').addEventListener('click', () => {
+  const row = addSectionRow('');
+  row.querySelector('.sec-title').focus();
+});
 
 function groupChipHTML(g, checkedGroupIds) {
   return `
@@ -549,8 +622,7 @@ function openForm(tpl) {
   document.getElementById('f-day-of-month').value = detail.day_of_month ?? '1';
   syncRecurrenceFieldVisibility();
 
-  document.getElementById('subtask-list').innerHTML = '';
-  (tpl ? tpl.subtasks : []).forEach(s => addSubtaskRow(s));
+  renderSubtaskList(tpl ? tpl.subtasks : []);
 
   const checkedGroupIds = new Set(tpl ? (tpl.group_ids || []) : []);
   renderGroupChips(checkedGroupIds);
@@ -597,9 +669,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     }
   }
 
-  const subtasks = [...document.querySelectorAll('#subtask-list .subtask-row')]
-    .map(row => ({ id: row.dataset.subtaskId || null, title: row.querySelector('.sb-title').value.trim() }))
-    .filter(s => s.title);
+  const subtasks = collectSubtasks();
 
   const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
 
@@ -657,8 +727,7 @@ document.getElementById('preset-apply-btn').addEventListener('click', () => {
     document.getElementById('f-start-date').value = preset.start_date || '';
     document.getElementById('f-end-date').value = preset.end_date || '';
   }
-  document.getElementById('subtask-list').innerHTML = '';
-  (preset.subtasks || []).forEach(s => addSubtaskRow({ title: s.title }));
+  renderSubtaskList((preset.subtasks || []).map(s => ({ title: s.title, section: s.section })));
   const presetGroupIds = new Set((preset.group_ids || []).filter(id => allGroups.some(g => g.id === id)));
   renderGroupChips(presetGroupIds);
 });
@@ -692,10 +761,7 @@ document.getElementById('save-preset-btn').addEventListener('click', async () =>
   const start_date = recurrence !== 'once' ? (document.getElementById('f-start-date').value || null) : null;
   const end_date = recurrence !== 'once' ? (document.getElementById('f-end-date').value || null) : null;
 
-  const subtasks = [...document.querySelectorAll('#subtask-list .subtask-row')]
-    .map(row => row.querySelector('.sb-title').value.trim())
-    .filter(Boolean)
-    .map(t => ({ title: t }));
+  const subtasks = collectSubtasks().map(({ title, section }) => ({ title, section }));
 
   const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
 
