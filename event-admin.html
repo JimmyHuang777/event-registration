@@ -204,6 +204,27 @@
       </div>
 
       <div class="field">
+        <label>所屬壇 Altar <span class="hint" style="margin:0;">選填，選定後該壇及其下層壇都能看到</span></label>
+        <select id="f-altar" style="width:100%; padding:11px 12px; border:1px solid var(--line, #E5E7EB); border-radius:10px; font-size:15px; background:#fff;"><option value="">（不限定壇）</option></select>
+      </div>
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:8px;">
+          <input type="checkbox" id="f-transport" style="width:18px; height:18px;"><span>🚗 提供交通（共乘）</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="f-lodging" style="width:18px; height:18px;"><span>🏠 提供住宿</span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="f-featured" style="width:18px; height:18px;">
+          <span>⭐ 顯示在「群聖家園」最上方的「近期重要班程」</span>
+        </label>
+        <p class="hint">勾選後，有權限看到此活動的成員會在首頁最上方看到它（活動日期過後自動消失）</p>
+      </div>
+
+      <div class="field">
         <label>自訂報名欄位 Custom fields <span class="hint" style="margin:0;">選填</span></label>
         <div id="field-builder-list"></div>
         <button type="button" class="btn-add" id="add-field-btn">＋ 新增欄位 Add field</button>
@@ -515,6 +536,44 @@ function collectFormSchema() {
 
 /* ---------- Form ---------- */
 
+// ---- 所屬壇 picker (same tree as the Dashboard's) ----
+let allAltarsCache = null;
+async function fillAltarSelect(selectedId) {
+  const sel = document.getElementById('f-altar');
+  sel.dataset.ready = '0';
+  sel.innerHTML = '<option value="">載入中…</option>';
+  try {
+    if (!allAltarsCache) allAltarsCache = (await callApi('list_altars')).altars || [];
+  } catch (e) {
+    sel.innerHTML = '<option value="">（無法載入壇）</option>';
+    return;
+  }
+  const byParent = {};
+  allAltarsCache.forEach(a => { (byParent[a.parent_id || ''] = byParent[a.parent_id || ''] || []).push(a); });
+  const opts = ['<option value="">（不限定壇）</option>'];
+  const walk = (pid, depth) => (byParent[pid] || []).forEach(a => {
+    opts.push('<option value="' + a.id + '">' + '\u3000'.repeat(depth) + (depth ? '└ ' : '') + escapeHtml(a.name) + '</option>');
+    walk(a.id, depth + 1);
+  });
+  walk('', 0);
+  sel.innerHTML = opts.join('');
+  sel.value = selectedId || '';
+  sel.dataset.ready = '1';
+}
+// undefined (= leave unchanged on the server) until the list has loaded,
+// so saving too early can never wipe an existing altar.
+function altarValueForSave() {
+  const sel = document.getElementById('f-altar');
+  return sel.dataset.ready === '1' ? (sel.value || null) : undefined;
+}
+
+const DEFAULT_PERSONAL_FIELDS = [
+  { label: '公堂組別', type: 'select', required: true, options: ['1','2','3','4','5','6','7','8','無'] },
+  { label: '性別', type: 'select', required: true, options: ['乾','坤','童','女'] },
+  { label: '天職', type: 'text', required: true },
+  { label: '佛堂', type: 'text', required: true },
+];
+
 function openForm(ev) {
   editingId = ev ? ev.id : null;
   document.getElementById('form-title').textContent = ev ? '編輯活動 Edit Event' : '新增活動 New Event';
@@ -525,12 +584,17 @@ function openForm(ev) {
   document.getElementById('f-description').value = ev ? (ev.description || '') : '';
   document.getElementById('f-date').value = ev ? (ev.event_date || '') : '';
   document.getElementById('f-location').value = ev ? (ev.location || '') : '';
+  document.getElementById('f-featured').checked = !!(ev && ev.is_featured);
+  document.getElementById('f-transport').checked = !!(ev && ev.offers_transport);
+  document.getElementById('f-lodging').checked = !!(ev && ev.offers_lodging);
+  fillAltarSelect(ev ? (ev.altar_id || '') : '');
   document.getElementById('f-slug').value = ev ? (ev.slug || '') : '';
   document.getElementById('f-slug').disabled = !!ev;
   document.getElementById('f-slug-lock-note').style.display = ev ? 'block' : 'none';
 
   document.getElementById('field-builder-list').innerHTML = '';
-  (ev ? (ev.form_schema || []) : []).forEach(f => addFieldBuilderRow(f));
+  // New events start with the personal-info fields (so 帶入個人資訊 can fill them).
+  (ev ? (ev.form_schema || []) : DEFAULT_PERSONAL_FIELDS).forEach(f => addFieldBuilderRow(f));
 
   const checkedGroupIds = new Set(ev ? (ev.group_ids || []) : []);
   renderGroupChips(checkedGroupIds);
@@ -559,6 +623,10 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     description: document.getElementById('f-description').value.trim() || null,
     event_date: document.getElementById('f-date').value || null,
     location: document.getElementById('f-location').value.trim() || null,
+    is_featured: document.getElementById('f-featured').checked,
+    offers_transport: document.getElementById('f-transport').checked,
+    offers_lodging: document.getElementById('f-lodging').checked,
+    altar_id: altarValueForSave(),
     form_schema: collectFormSchema(),
     group_ids: [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value),
   };

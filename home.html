@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>入口 Home</title>
+<title>群聖家園 Home</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -57,6 +57,23 @@
   .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
   .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
 
+  .featured-wrap { padding: 14px 16px 0; }
+  .featured-title { font-size: 15px; font-weight: 800; margin: 0 2px 10px; display: flex; align-items: center; gap: 6px; }
+  .featured-card {
+    display: flex; align-items: center; gap: 12px; padding: 16px; margin-bottom: 10px; border-radius: 16px;
+    text-decoration: none; color: #fff; background: linear-gradient(135deg, #F97316 0%, #DC2626 100%);
+    box-shadow: 0 6px 16px rgba(220, 38, 38, .25);
+  }
+  .featured-card.task { background: linear-gradient(135deg, #7C3AED 0%, #2563EB 100%); box-shadow: 0 6px 16px rgba(37, 99, 235, .25); }
+  .featured-card:active { transform: scale(.99); }
+  .featured-date { flex-shrink: 0; min-width: 52px; text-align: center; background: rgba(255,255,255,.2); border-radius: 12px; padding: 6px 4px; line-height: 1.15; }
+  .featured-date .m { font-size: 11px; opacity: .9; }
+  .featured-date .d { font-size: 22px; font-weight: 800; }
+  .featured-body { flex: 1; min-width: 0; }
+  .featured-body .t { font-size: 16px; font-weight: 800; margin-bottom: 3px; }
+  .featured-body .s { font-size: 12.5px; opacity: .92; line-height: 1.4; }
+  .featured-cta { font-size: 12px; font-weight: 700; background: #fff; color: #DC2626; padding: 6px 10px; border-radius: 999px; flex-shrink: 0; }
+  .featured-card.task .featured-cta { color: #2563EB; }
   .section-label { font-size: 12px; color: var(--ink-soft); font-weight: 700; margin: 14px 4px 2px; letter-spacing: 0.02em; }
 
   .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
@@ -80,13 +97,14 @@
 
   <div id="main-screen">
     <div class="header">
-      <h1>功能入口 Home</h1>
+      <h1>群聖家園 Home</h1>
       <p>點選以下項目前往對應功能</p>
     </div>
     <div class="profile-row">
       <img id="profile-pic" src="" alt="">
       <span class="name" id="profile-name">—</span>
     </div>
+    <div class="featured-wrap" id="featured-wrap" style="display:none;"></div>
     <div class="menu-list" id="menu-list"></div>
   </div>
 
@@ -181,20 +199,63 @@ function appendSectionLabel(listEl, text, lastSectionRef) {
   lastSectionRef.value = text;
 }
 
+function renderFeatured(items) {
+  const wrap = document.getElementById('featured-wrap');
+  if (!items || items.length === 0) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<div class="featured-title">⭐ 近期重要班程</div>';
+  items.forEach(it => {
+    const a = document.createElement('a');
+    a.className = 'featured-card' + (it.kind === 'task' ? ' task' : '');
+    a.href = it.kind === 'event' ? 'index.html?event=' + encodeURIComponent(it.slug) : 'tasks.html';
+    let dateBox = '<div class="featured-date"><div class="d">★</div></div>';
+    if (it.date) {
+      const [y, m, d] = it.date.split('-');
+      dateBox = `<div class="featured-date"><div class="m">${parseInt(m, 10)}月</div><div class="d">${parseInt(d, 10)}</div></div>`;
+    }
+    const sub = [it.kind === 'event' ? '班程報名' : '行功了愿',
+      it.end_date && it.end_date !== it.date ? '至 ' + it.end_date : '',
+      it.place ? '📍 ' + it.place : ''].filter(Boolean).map(escapeHtml).join('　');
+    a.innerHTML = `${dateBox}
+      <div class="featured-body"><div class="t">${escapeHtml(it.title)}</div><div class="s">${sub}</div></div>
+      <div class="featured-cta">${it.kind === 'event' ? '立即報名' : '查看'}</div>`;
+    wrap.appendChild(a);
+  });
+}
+
 async function renderMenu(menuData) {
+  renderFeatured(menuData.featured);
   const listEl = document.getElementById('menu-list');
   listEl.innerHTML = '';
+
+  // Always shown to everyone: personal info + family/friend info, which
+  // the event registration page can fill in with one tap.
+  const lastSection0 = { value: null };
+  appendSectionLabel(listEl, '我的資料 My Info', lastSection0);
+  [
+    { href: 'profile.html', icon: '🪪', color: '#0EA5A4', title: '個人資訊 Profile', desc: '公堂組別、姓名、性別、天職、佛堂、電話；報名時可一鍵帶入' },
+    { href: 'profile.html#family', icon: '👪', color: '#8B5CF6', title: '親友資訊 Family & Friends', desc: '新增親友與「與您的關係」；報名時可一鍵帶入' },
+  ].forEach(p => {
+    const card = document.createElement('a');
+    card.className = 'menu-card';
+    card.href = p.href;
+    card.innerHTML = `
+      <div class="menu-icon" style="background:${p.color};">${p.icon}</div>
+      <div class="menu-body"><div class="title">${p.title}</div><div class="desc">${p.desc}</div></div>
+      <div class="menu-arrow">›</div>`;
+    listEl.appendChild(card);
+  });
 
   const wanted = MENU_ENTRIES.filter(e => menuData[e.flag]);
   const events = menuData.events || [];
   const altars = menuData.altars || [];
 
   if (wanted.length === 0 && events.length === 0 && altars.length === 0) {
-    listEl.innerHTML = '<div class="empty-state">目前沒有可以使用的功能。<br>若您認為這是誤判，請聯繫管理員將您加入相關群組。</div>';
+    listEl.insertAdjacentHTML('beforeend', '<div class="empty-state">目前沒有其他可以使用的功能。<br>若您認為這是誤判，請聯繫管理員將您加入相關群組。</div>');
     return;
   }
 
-  const lastSection = { value: null };
+  const lastSection = { value: lastSection0.value };
 
   wanted.forEach(entry => {
     appendSectionLabel(listEl, entry.section === 'admin' ? '管理功能 Admin' : '一般功能', lastSection);
@@ -215,7 +276,7 @@ async function renderMenu(menuData) {
 
   // ---- Active events (each has its own unique liff_id already) ----
   if (events.length > 0) {
-    appendSectionLabel(listEl, '活動報名 Events', lastSection);
+    appendSectionLabel(listEl, '班程報名', lastSection);
     events.forEach(ev => {
       const card = document.createElement('a');
       card.className = 'menu-card';
