@@ -167,7 +167,7 @@ serve(async (req) => {
         const tplIds = [...new Set(active.map((i: any) => i.template_id))];
         const instIds = active.map((i: any) => i.id);
         const { data: subs } = await supabase
-          .from("task_subtask_templates").select("id, template_id, title, sort_order, section")
+          .from("task_subtask_templates").select("id, template_id, title, sort_order, section, slots")
           .in("template_id", tplIds).order("sort_order", { ascending: true });
         const { data: comps } = await supabase
           .from("task_subtask_completions")
@@ -182,16 +182,16 @@ serve(async (req) => {
             title: i.task_templates.title,
             place: i.task_templates.place || null,
             subtasks: (subs || []).filter((x: any) => x.template_id === i.template_id).map((x: any) => {
-              const c = (comps || []).find((k: any) => k.subtask_template_id === x.id && k.instance_id === i.id);
-              const st = c ? c.status : "unassigned";
-              const on = st === "taken" || st === "completed";
+              const rows = (comps || []).filter((k: any) => k.subtask_template_id === x.id && k.instance_id === i.id);
+              const people = rows
+                .filter((k: any) => k.status === "taken" || k.status === "completed")
+                .map((k: any) => ({ completion_id: k.id, user_id: k.assigned_user_id, name: k.users?.display_name || "—", status: k.status }));
               return {
                 subtask_template_id: x.id,
                 title: x.title,
                 section: x.section || null,
-                status: st,
-                completion_id: c ? c.id : null,
-                assigned_name: c && on ? (c as any).users?.display_name || null : null,
+                slots: Math.max(1, x.slots || 1),
+                people,
               };
             }),
           }))
@@ -219,18 +219,25 @@ serve(async (req) => {
         const { instance_id, subtask_template_id, user_id, force } = body;
         if (!instance_id || !subtask_template_id || !user_id) return json({ error: "Missing fields." }, 400);
         const { data: inst } = await supabase.from("task_instances").select("id, template_id").eq("id", instance_id).maybeSingle();
-        const { data: sub } = await supabase.from("task_subtask_templates").select("id, template_id").eq("id", subtask_template_id).maybeSingle();
+        const { data: sub } = await supabase.from("task_subtask_templates").select("id, template_id, slots").eq("id", subtask_template_id).maybeSingle();
         if (!inst || !sub || sub.template_id !== inst.template_id) return json({ error: "找不到這個子項目。" }, 404);
         if (!force && !(await userCanSeeTemplate(inst.template_id, user_id))) {
           return json({ error: "此人不在這項工作的適用群組／壇內。", not_eligible: true }, 409);
         }
-        const { data: existing } = await supabase
-          .from("task_subtask_completions").select("id, status")
-          .eq("instance_id", instance_id).eq("subtask_template_id", subtask_template_id).maybeSingle();
-        if (existing?.status === "completed") return json({ error: "這個子項目已經完成了。" }, 409);
-        if (existing) {
+        const slots = Math.max(1, (sub as any).slots || 1);
+        const { data: rowsRaw } = await supabase
+          .from("task_subtask_completions").select("id, status, assigned_user_id")
+          .eq("instance_id", instance_id).eq("subtask_template_id", subtask_template_id);
+        const rows = rowsRaw || [];
+        const mine = rows.find((r: any) => r.assigned_user_id === user_id);
+        if (mine?.status === "taken") return json({ ok: true });
+        if (mine?.status === "completed") return json({ error: "這個人已經完成這個子項目了。" }, 409);
+        const live = rows.filter((r: any) => r.status === "taken" || r.status === "completed").length;
+        if (live >= slots) return json({ error: "這個子項目名額已滿（" + slots + " 人）。可先取消其中一位，或調高人數。" }, 409);
+        const reuse = mine || rows.find((r: any) => r.status === "incomplete");
+        if (reuse) {
           const { error } = await supabase.from("task_subtask_completions")
-            .update({ assigned_user_id: user_id, status: "taken", completed_by: null, completed_at: null }).eq("id", existing.id);
+            .update({ assigned_user_id: user_id, status: "taken", completed_by: null, completed_at: null }).eq("id", (reuse as any).id);
           if (error) return json({ error: error.message }, 400);
         } else {
           const { error } = await supabase.from("task_subtask_completions")
@@ -263,7 +270,7 @@ serve(async (req) => {
         if (templateIds.length > 0) {
           const { data: subs, error: subsErr } = await supabase
             .from("task_subtask_templates")
-            .select("id, template_id, title, sort_order, section")
+            .select("id, template_id, title, sort_order, section, slots")
             .in("template_id", templateIds)
             .order("sort_order", { ascending: true });
           if (subsErr) return json({ error: subsErr.message }, 400);
@@ -369,6 +376,7 @@ serve(async (req) => {
             id: s && s.id ? s.id : null,
             title: ((s && s.title) || "").trim(),
             section: ((s && s.section) || "").trim().slice(0, 60) || null,
+            slots: Math.max(1, Math.min(50, parseInt(String(s && s.slots), 10) || 1)),
             sort_order: idx,
           }))
           .filter((r: any) => r.title);
@@ -386,9 +394,9 @@ serve(async (req) => {
         }
         for (const row of rows) {
           if (row.id) {
-            await supabase.from("task_subtask_templates").update({ title: row.title, section: row.section, sort_order: row.sort_order }).eq("id", row.id);
+            await supabase.from("task_subtask_templates").update({ title: row.title, section: row.section, slots: row.slots, sort_order: row.sort_order }).eq("id", row.id);
           } else {
-            await supabase.from("task_subtask_templates").insert({ template_id: templateId, title: row.title, section: row.section, sort_order: row.sort_order });
+            await supabase.from("task_subtask_templates").insert({ template_id: templateId, title: row.title, section: row.section, slots: row.slots, sort_order: row.sort_order });
           }
         }
 
@@ -448,7 +456,7 @@ serve(async (req) => {
           start_date: start_date || null,
           end_date: end_date || null,
           subtasks: (Array.isArray(subtasks) ? subtasks : [])
-            .map((s: any) => ({ title: ((s && s.title) || "").trim(), section: ((s && s.section) || "").trim().slice(0, 60) || null }))
+            .map((s: any) => ({ title: ((s && s.title) || "").trim(), section: ((s && s.section) || "").trim().slice(0, 60) || null, slots: Math.max(1, Math.min(50, parseInt(String(s && s.slots), 10) || 1)) }))
             .filter((s: any) => s.title),
           group_ids: Array.isArray(group_ids) ? group_ids : [],
           updated_at: new Date().toISOString(),

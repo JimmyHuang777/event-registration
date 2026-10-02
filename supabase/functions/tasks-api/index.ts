@@ -335,7 +335,7 @@ serve(async (req) => {
         if (templateIds.length > 0) {
           const { data: subs, error: subsErr } = await supabase
             .from("task_subtask_templates")
-            .select("id, template_id, title, sort_order, section")
+            .select("id, template_id, title, sort_order, section, slots")
             .in("template_id", templateIds)
             .order("sort_order", { ascending: true });
           if (subsErr) return json({ error: subsErr.message }, 400);
@@ -348,22 +348,27 @@ serve(async (req) => {
 
           const templateSubtasks = subtaskTemplates.filter((s) => s.template_id === inst.template_id);
           const subtasks = templateSubtasks.map((s) => {
-            const state = subtaskState.find(
-              (c) => c.subtask_template_id === s.id && c.instance_id === inst.id
-            );
-            // 'unassigned' 未指派 (no row yet) | 'taken' 已指派 |
-            // 'completed' 已完成 | 'incomplete' 未能完成 (was taken,
-            // then given up — stays visible/claimable, distinct from
-            // never having been touched at all).
-            const status = state ? state.status : "unassigned";
-            const activeOrDone = status === "taken" || status === "completed";
+            const rows = subtaskState.filter((c) => c.subtask_template_id === s.id && c.instance_id === inst.id);
+            const slots = Math.max(1, s.slots || 1);
+            const live = rows.filter((r) => r.status === "taken" || r.status === "completed");
+            const mineRow = existingUser ? live.find((r) => r.assigned_user_id === existingUser.id) : null;
+            // 'unassigned' 未指派 | 'taken' 已指派 | 'completed' 已完成 |
+            // 'incomplete' 未能完成 (was taken, then given up). With several
+            // slots: the caller sees their own row's status; otherwise the
+            // subtask is open (claimable) until every slot is filled.
+            let status: string;
+            if (mineRow) status = mineRow.status;
+            else if (live.length >= slots) status = live.every((r) => r.status === "completed") ? "completed" : "taken";
+            else status = live.length === 0 && rows.some((r) => r.status === "incomplete") ? "incomplete" : "unassigned";
             return {
               subtask_template_id: s.id,
               title: s.title,
               section: s.section || null,
               status,
-              assigned_name: state && activeOrDone ? state.users?.display_name || null : null,
-              assigned_to_me: !!(state && existingUser && activeOrDone && state.assigned_user_id === existingUser.id),
+              slots,
+              filled: live.length,
+              assigned_name: live.length ? live.map((r) => r.users?.display_name || "—").join("、") : null,
+              assigned_to_me: !!mineRow,
             };
           });
 
@@ -535,12 +540,14 @@ serve(async (req) => {
           if (subTemplates && subTemplates.length > 0) {
             const { data: doneRows } = await supabase
               .from("task_subtask_completions")
-              .select("subtask_template_id")
+              .select("subtask_template_id, status")
               .eq("instance_id", existingAsg.instance_id)
-              .eq("status", "completed");
+              .in("status", ["completed", "taken"]);
 
-            const doneIds = new Set((doneRows || []).map((r: any) => r.subtask_template_id));
-            const allDone = subTemplates.every((s: any) => doneIds.has(s.id));
+            // Done = at least one person finished it and nobody still has it open.
+            const doneIds = new Set((doneRows || []).filter((r: any) => r.status === "completed").map((r: any) => r.subtask_template_id));
+            const openIds = new Set((doneRows || []).filter((r: any) => r.status === "taken").map((r: any) => r.subtask_template_id));
+            const allDone = subTemplates.every((s: any) => doneIds.has(s.id) && !openIds.has(s.id));
             if (!allDone) {
               return json({ error: "請先完成所有子項目才能標記此任務完成。Please finish every subtask first." }, 400);
             }
@@ -599,35 +606,41 @@ serve(async (req) => {
           return json({ error: "這項工作不開放給您的群組。This task isn't open to your group." }, 403);
         }
 
-        const { data: existingRow } = await supabase
+        const { data: stRow } = await supabase
+          .from("task_subtask_templates").select("id, template_id, slots").eq("id", subtask_template_id).maybeSingle();
+        if (!stRow || (stRow as any).template_id !== (inst as any).template_id) {
+          return json({ error: "找不到這個子項目。" }, 404);
+        }
+        const slots = Math.max(1, (stRow as any).slots || 1);
+
+        const { data: allRows } = await supabase
           .from("task_subtask_completions")
           .select("id, assigned_user_id, status")
           .eq("instance_id", instance_id)
-          .eq("subtask_template_id", subtask_template_id)
-          .maybeSingle();
+          .eq("subtask_template_id", subtask_template_id);
+        const rows = allRows || [];
+        const mine = rows.find((r: any) => r.assigned_user_id === claimerUser.id);
 
-        // Claimable when there's no row yet (未指派) or when it was
-        // previously given up (未能完成 / 'incomplete'). Already
-        // taken or already completed is not claimable.
-        if (existingRow) {
-          if (existingRow.status === "taken" && existingRow.assigned_user_id === claimerUser.id) {
-            return json({ ok: true }); // already mine — idempotent
-          }
-          if (existingRow.status === "taken") {
-            return json({ error: "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
-          }
-          if (existingRow.status === "completed") {
-            return json({ error: "這個子項目已經完成了。This subtask has already been completed." }, 409);
-          }
-          // status === 'incomplete' — reclaim it in place
+        if (mine?.status === "taken") return json({ ok: true }); // already mine — idempotent
+        if (mine?.status === "completed") {
+          return json({ error: "這個子項目您已經完成了。This subtask has already been completed." }, 409);
+        }
+        const live = rows.filter((r: any) => r.status === "taken" || r.status === "completed").length;
+        if (live >= slots) {
+          return json({ error: slots > 1 ? "這個子項目名額已滿。This subtask is full." : "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
+        }
+
+        // Re-use the caller's own given-up row, else any given-up row,
+        // else add a new one.
+        const reuse = mine || rows.find((r: any) => r.status === "incomplete");
+        if (reuse) {
           const { error } = await supabase
             .from("task_subtask_completions")
             .update({ assigned_user_id: claimerUser.id, status: "taken", completed_by: null, completed_at: null })
-            .eq("id", existingRow.id);
+            .eq("id", (reuse as any).id);
           if (error) return json({ error: error.message }, 400);
           return json({ ok: true });
         }
-
         const { error } = await supabase
           .from("task_subtask_completions")
           .insert({ instance_id, subtask_template_id, assigned_user_id: claimerUser.id, status: "taken" });
@@ -648,6 +661,7 @@ serve(async (req) => {
           .select("id, assigned_user_id, status")
           .eq("instance_id", instance_id)
           .eq("subtask_template_id", subtask_template_id)
+          .eq("assigned_user_id", existingUser.id)
           .maybeSingle();
 
         if (!existingRow) return json({ ok: true }); // nothing to release
@@ -682,6 +696,7 @@ serve(async (req) => {
           .select("id, assigned_user_id, status")
           .eq("instance_id", instance_id)
           .eq("subtask_template_id", subtask_template_id)
+          .eq("assigned_user_id", existingUser.id)
           .maybeSingle();
 
         if (!existingRow || existingRow.assigned_user_id !== existingUser.id) {

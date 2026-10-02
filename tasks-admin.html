@@ -62,6 +62,13 @@
   .asg-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--canvas); font-size: 13.5px; flex-wrap: wrap; }
   .asg-row .t { flex: 1 1 40%; }
   .asg-row .by { font-size: 12px; color: var(--ink-soft); }
+  .asg-count { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 20px; background: #FEF3C7; color: #B45309; }
+  .asg-count.full { background: #DCFCE7; color: #15803D; }
+  .asg-people { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .asg-person { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; background: #DBEAFE; color: #1D4ED8; border-radius: 20px; padding: 3px 4px 3px 10px; }
+  .asg-person.completed { background: #FEF3C7; color: #B45309; padding-right: 10px; }
+  .asg-x { border: none; background: rgba(0,0,0,.08); color: inherit; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; line-height: 1; }
+  .asg-add { border: 1px dashed #2563EB; background: none; color: #2563EB; border-radius: 20px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; }
   .asg-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #F3F4F6; color: #6B7280; }
   .asg-badge.taken { background: #DBEAFE; color: #1D4ED8; }
   .asg-badge.completed { background: #FEF3C7; color: #B45309; }
@@ -104,6 +111,8 @@
   .section-row .sec-add-btn { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; height: 36px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
   .section-row .remove-btn { background: var(--error-bg); color: var(--error); border: none; border-radius: 8px; width: 36px; height: 36px; font-size: 15px; cursor: pointer; }
   .subtask-row input { flex: 1; }
+  .subtask-row .slots-wrap { flex: none; display: flex; align-items: center; gap: 2px; font-size: 12px; color: var(--ink-soft); }
+  .subtask-row input.sb-slots { flex: none; width: 46px; padding: 0 4px; text-align: center; }
   .subtask-row .remove-btn {
     background: var(--error-bg); color: var(--error); border: none; border-radius: 8px;
     width: 36px; font-size: 15px; cursor: pointer;
@@ -246,10 +255,6 @@
             <option value="monthly">每月 Monthly</option>
             <option value="once">單次 One-time</option>
           </select>
-        </div>
-        <div class="field">
-          <label>需求人數 Slots</label>
-          <input type="number" id="f-slots" min="1" value="1">
         </div>
       </div>
       <div class="field" id="f-weekly-field" style="display:none;">
@@ -514,7 +519,7 @@ function renderJobList() {
         </div>
         <span class="job-status ${t.is_active ? 'active' : 'inactive'}">${t.is_active ? '啟用中' : '已停用'}</span>
       </div>
-      <div class="job-meta">${RECURRENCE_LABELS[t.recurrence] || t.recurrence}・需求 ${t.slots_per_instance} 人${t.place ? '・📍 ' + escapeHtml(t.place) : ''}${t.subtasks.length ? '・子項目 ' + t.subtasks.length + ' 項' + (new Set(t.subtasks.map(x => x.section).filter(Boolean)).size ? '（' + new Set(t.subtasks.map(x => x.section).filter(Boolean)).size + ' 個分區）' : '') : ''}</div>
+      <div class="job-meta">${RECURRENCE_LABELS[t.recurrence] || t.recurrence}${t.place ? '・📍 ' + escapeHtml(t.place) : ''}${t.subtasks.length ? '・子項目 ' + t.subtasks.length + ' 項' + (new Set(t.subtasks.map(x => x.section).filter(Boolean)).size ? '（' + new Set(t.subtasks.map(x => x.section).filter(Boolean)).size + ' 個分區）' : '') : ''}</div>
       <div class="job-actions">
         <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
         <button type="button" class="btn-text" data-action="toggle">${t.is_active ? '停用' : '啟用'}</button>
@@ -577,12 +582,14 @@ function renderAssignList() {
     const rows = inst.subtasks.map(s => {
       const sec = (s.section && s.section !== lastSec) ? '<div class="asg-section">' + escapeHtml(s.section) + '</div>' : '';
       lastSec = s.section;
-      const btns = s.status === 'completed' ? '' :
-        '<button type="button" class="btn-text" data-act="assign">' + (s.status === 'taken' ? '更換' : '＋ 指派') + '</button>' +
-        (s.status === 'taken' && s.completion_id ? '<button type="button" class="btn-text danger" data-act="unassign">取消</button>' : '');
-      return sec + '<div class="asg-row" data-instance="' + inst.instance_id + '" data-sub="' + s.subtask_template_id + '" data-comp="' + (s.completion_id || '') + '">' +
-        '<span class="t">' + escapeHtml(s.title) + '</span><span class="asg-badge ' + s.status + '">' + (ASG_STATUS[s.status] || s.status) + '</span>' +
-        (s.assigned_name ? '<span class="by">' + escapeHtml(s.assigned_name) + '</span>' : '') + btns + '</div>';
+      const people = (s.people || []).map(p =>
+        '<span class="asg-person ' + p.status + '">' + escapeHtml(p.name) + (p.status === 'completed' ? ' ✓' : '') +
+        (p.status === 'taken' ? '<button type="button" class="asg-x" data-act="unassign" data-comp="' + p.completion_id + '" title="取消指派">✕</button>' : '') + '</span>').join('');
+      const open = (s.people || []).length < s.slots;
+      return sec + '<div class="asg-row" data-instance="' + inst.instance_id + '" data-sub="' + s.subtask_template_id + '">' +
+        '<span class="t">' + escapeHtml(s.title) + '</span>' +
+        '<span class="asg-count' + (open ? '' : ' full') + '">' + (s.people || []).length + '/' + s.slots + '</span>' +
+        '<div class="asg-people">' + people + (open ? '<button type="button" class="asg-add" data-act="assign">＋ 指派</button>' : '') + '</div></div>';
     }).join('');
     return head + '<div class="asg-card" data-instance="' + inst.instance_id + '"><div class="asg-title">' + escapeHtml(inst.title) + '</div>' +
       (inst.place ? '<div class="asg-place">📍 ' + escapeHtml(inst.place) + '</div>' : '') + rows + '</div>';
@@ -595,8 +602,8 @@ document.getElementById('assign-list').addEventListener('click', async (e) => {
   const row = btn.closest('.asg-row');
   const inst = asgInstances.find(i => i.instance_id === row.dataset.instance);
   if (btn.dataset.act === 'unassign') {
-    if (!confirm('確定要取消這個子項目的指派嗎？')) return;
-    try { await callApi('unassign_subtask', { completion_id: row.dataset.comp }); await openAssignScreen(); }
+    if (!confirm('確定要取消這位的指派嗎？')) return;
+    try { await callApi('unassign_subtask', { completion_id: btn.dataset.comp }); await openAssignScreen(); }
     catch (err) { alert('取消失敗：' + err.message); }
     return;
   }
@@ -663,6 +670,7 @@ function addSubtaskRow(prefill, afterEl) {
   wrap.dataset.subtaskId = (prefill && prefill.id) || '';
   wrap.innerHTML = `
     <input type="text" class="sb-title" placeholder="例：關閉電燈" value="${prefill ? escapeHtml(prefill.title || '') : ''}">
+    <span class="slots-wrap" title="這個子項目需要幾位負責人"><input type="number" class="sb-slots" min="1" max="50" inputmode="numeric" value="${prefill && prefill.slots ? prefill.slots : 1}">人</span>
     <button type="button" class="remove-btn">✕</button>
   `;
   const list = document.getElementById('subtask-list');
@@ -722,7 +730,7 @@ function collectSubtasks() {
       section = el.querySelector('.sec-title').value.trim() || null;
     } else {
       const title = el.querySelector('.sb-title').value.trim();
-      if (title) out.push({ id: el.dataset.subtaskId || null, title, section });
+      if (title) out.push({ id: el.dataset.subtaskId || null, title, section, slots: Math.max(1, Math.min(50, parseInt(el.querySelector('.sb-slots').value, 10) || 1)) });
     }
   });
   return out;
@@ -795,7 +803,6 @@ function openForm(tpl) {
   document.getElementById('f-title').value = tpl ? tpl.title : '';
   document.getElementById('f-description').value = tpl ? (tpl.description || '') : '';
   document.getElementById('f-recurrence').value = tpl ? tpl.recurrence : 'daily';
-  document.getElementById('f-slots').value = tpl ? tpl.slots_per_instance : 1;
   document.getElementById('f-place').value = tpl ? (tpl.place || '') : '';
   document.getElementById('f-featured').checked = !!(tpl && tpl.is_featured);
   fillAltarSelect(tpl ? (tpl.altar_id || '') : '');
@@ -868,7 +875,6 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     description: document.getElementById('f-description').value.trim() || null,
     recurrence,
     recurrence_detail,
-    slots_per_instance: parseInt(document.getElementById('f-slots').value, 10) || 1,
     place: document.getElementById('f-place').value.trim() || null,
     is_featured: document.getElementById('f-featured').checked,
     altar_id: altarValueForSave(),
@@ -914,7 +920,7 @@ document.getElementById('preset-apply-btn').addEventListener('click', () => {
     document.getElementById('f-start-date').value = preset.start_date || '';
     document.getElementById('f-end-date').value = preset.end_date || '';
   }
-  renderSubtaskList((preset.subtasks || []).map(s => ({ title: s.title, section: s.section })));
+  renderSubtaskList((preset.subtasks || []).map(s => ({ title: s.title, section: s.section, slots: s.slots })));
   const presetGroupIds = new Set((preset.group_ids || []).filter(id => allGroups.some(g => g.id === id)));
   renderGroupChips(presetGroupIds);
 });
@@ -948,7 +954,7 @@ document.getElementById('save-preset-btn').addEventListener('click', async () =>
   const start_date = recurrence !== 'once' ? (document.getElementById('f-start-date').value || null) : null;
   const end_date = recurrence !== 'once' ? (document.getElementById('f-end-date').value || null) : null;
 
-  const subtasks = collectSubtasks().map(({ title, section }) => ({ title, section }));
+  const subtasks = collectSubtasks().map(({ title, section, slots }) => ({ title, section, slots }));
 
   const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
 
