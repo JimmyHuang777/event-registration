@@ -222,6 +222,7 @@ serve(async (req) => {
           place: place ? String(place).trim() : null,
           start_date: cleanStart,
           end_date: cleanEnd,
+          is_featured: !!body.is_featured,
         };
 
         let templateId = id || null;

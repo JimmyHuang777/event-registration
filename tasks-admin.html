@@ -234,6 +234,13 @@
         <label>地點 Place <span class="hint" style="margin:0;">選填</span></label>
         <input type="text" id="f-place" placeholder="例：大殿 Main hall">
       </div>
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="f-featured" style="width:18px; height:18px;">
+          <span>⭐ 顯示在「群聖家園」最上方的「近期重要班程」</span>
+        </label>
+        <div class="hint">勾選後，有權限看到此工作的成員會在首頁最上方看到它（結束日期過後自動消失）</div>
+      </div>
       <div class="field" id="f-once-date-field" style="display:none;">
         <label>日期 Date <span class="hint" style="margin:0;">此工作只會在這一天出現一次</span></label>
         <input type="date" id="f-once-date">
@@ -614,6 +621,7 @@ function openForm(tpl) {
   document.getElementById('f-recurrence').value = tpl ? tpl.recurrence : 'daily';
   document.getElementById('f-slots').value = tpl ? tpl.slots_per_instance : 1;
   document.getElementById('f-place').value = tpl ? (tpl.place || '') : '';
+  document.getElementById('f-featured').checked = !!(tpl && tpl.is_featured);
   document.getElementById('f-start-date').value = (tpl && tpl.recurrence !== 'once') ? (tpl.start_date || '') : '';
   document.getElementById('f-end-date').value = (tpl && tpl.recurrence !== 'once') ? (tpl.end_date || '') : '';
   document.getElementById('f-once-date').value = (tpl && tpl.recurrence === 'once') ? (tpl.start_date || '') : '';
@@ -685,6 +693,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     recurrence_detail,
     slots_per_instance: parseInt(document.getElementById('f-slots').value, 10) || 1,
     place: document.getElementById('f-place').value.trim() || null,
+    is_featured: document.getElementById('f-featured').checked,
     start_date, end_date,
     subtasks, group_ids,
   };

@@ -207,7 +207,7 @@ serve(async (req) => {
     // templates and flows, via event_groups). ----
     const { data: eventRows } = await supabase
       .from("events")
-      .select("id, name, slug, event_date, location, altar_id")
+      .select("id, name, slug, event_date, location, altar_id, is_featured")
       .eq("is_active", true)
       .order("event_date", { ascending: true });
     // No liff_id needed any more: every event opens through the ONE shared
@@ -237,7 +237,46 @@ serve(async (req) => {
         if (!groups || groups.length === 0) return true; // public event
         return groups.some((gid) => myGroupIds.has(gid));
       })
-      .map((e: any) => ({ id: e.id, name: e.name, slug: e.slug, event_date: e.event_date, location: e.location }));
+      .map((e: any) => ({ id: e.id, name: e.name, slug: e.slug, event_date: e.event_date, location: e.location, is_featured: !!e.is_featured }));
+
+    // ---- 近期重要班程: featured events + featured job templates this
+    // member can see, that haven't ended yet (Asia/Taipei "today"). ----
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    const featured: any[] = [];
+    events
+      .filter((e: any) => e.is_featured && (!e.event_date || e.event_date >= today))
+      .forEach((e: any) =>
+        featured.push({ kind: "event", id: e.id, title: e.name, slug: e.slug, date: e.event_date, end_date: null, place: e.location })
+      );
+
+    const { data: featTpls } = await supabase
+      .from("task_templates")
+      .select("id, title, place, recurrence, start_date, end_date, altar_id")
+      .eq("is_active", true)
+      .eq("is_featured", true);
+    const liveTpls = (featTpls || []).filter((t: any) => !t.end_date || t.end_date >= today);
+    if (liveTpls.length > 0) {
+      const tplIds = liveTpls.map((t: any) => t.id);
+      const { data: tplGroupRows } = await supabase
+        .from("task_template_groups")
+        .select("template_id, group_id")
+        .in("template_id", tplIds);
+      const groupsByTpl: Record<string, string[]> = {};
+      (tplGroupRows || []).forEach((r: any) => { (groupsByTpl[r.template_id] ||= []).push(r.group_id); });
+      const tplAltarIds = liveTpls.map((t: any) => t.altar_id).filter(Boolean);
+      const visibleTplAltars = tplAltarIds.length > 0 ? await visibleAltarIdSet(tplAltarIds, existingUser) : new Set<string>();
+      liveTpls
+        .filter((t: any) => {
+          if (t.altar_id && visibleTplAltars.has(t.altar_id)) return true;
+          const g = groupsByTpl[t.id];
+          if (!g || g.length === 0) return true;
+          return g.some((gid) => myGroupIds.has(gid));
+        })
+        .forEach((t: any) =>
+          featured.push({ kind: "task", id: t.id, title: t.title, slug: null, date: t.start_date, end_date: t.end_date, place: t.place })
+        );
+    }
+    featured.sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
 
     // ---- Every altar the caller belongs to on any of its 3 teams,
     // that already has its own LINE link ----
@@ -272,6 +311,7 @@ serve(async (req) => {
       show_flows: showFlows,
       events,
       altars,
+      featured,
     });
   } catch (err) {
     console.error(err);

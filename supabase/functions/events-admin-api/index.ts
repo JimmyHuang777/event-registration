@@ -149,7 +149,7 @@ serve(async (req) => {
       case "list_events": {
         const { data: events, error } = await supabase
           .from("events")
-          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id")
+          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured")
           .order("event_date", { ascending: false });
         if (error) return json({ error: error.message }, 400);
 
@@ -180,6 +180,7 @@ serve(async (req) => {
         const eventDate = body.event_date || null;
         const location = (body.location || "").trim() || null;
         const formSchema = Array.isArray(body.form_schema) ? body.form_schema : [];
+        const isFeatured = !!body.is_featured;
         const groupIds: string[] = Array.isArray(body.group_ids) ? body.group_ids : [];
 
         if (!name) return json({ error: "請填寫活動名稱。" }, 400);
@@ -187,7 +188,7 @@ serve(async (req) => {
         if (editingId) {
           const { error: updateErr } = await supabase
             .from("events")
-            .update({ name, description, event_date: eventDate, location, form_schema: formSchema })
+            .update({ name, description, event_date: eventDate, location, form_schema: formSchema, is_featured: isFeatured })
             .eq("id", editingId);
           if (updateErr) return json({ error: updateErr.message }, 400);
           await syncEventGroups(editingId, groupIds);
@@ -200,7 +201,7 @@ serve(async (req) => {
 
         const { data: newEvent, error: insertErr } = await supabase
           .from("events")
-          .insert({ name, description, event_date: eventDate, location, slug, form_schema: formSchema })
+          .insert({ name, description, event_date: eventDate, location, slug, form_schema: formSchema, is_featured: isFeatured })
           .select()
           .single();
         if (insertErr) return json({ error: insertErr.message }, 400);

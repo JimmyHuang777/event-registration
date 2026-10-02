@@ -204,6 +204,14 @@
       </div>
 
       <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="f-featured" style="width:18px; height:18px;">
+          <span>⭐ 顯示在「群聖家園」最上方的「近期重要班程」</span>
+        </label>
+        <p class="hint">勾選後，有權限看到此活動的成員會在首頁最上方看到它（活動日期過後自動消失）</p>
+      </div>
+
+      <div class="field">
         <label>自訂報名欄位 Custom fields <span class="hint" style="margin:0;">選填</span></label>
         <div id="field-builder-list"></div>
         <button type="button" class="btn-add" id="add-field-btn">＋ 新增欄位 Add field</button>
@@ -532,6 +540,7 @@ function openForm(ev) {
   document.getElementById('f-description').value = ev ? (ev.description || '') : '';
   document.getElementById('f-date').value = ev ? (ev.event_date || '') : '';
   document.getElementById('f-location').value = ev ? (ev.location || '') : '';
+  document.getElementById('f-featured').checked = !!(ev && ev.is_featured);
   document.getElementById('f-slug').value = ev ? (ev.slug || '') : '';
   document.getElementById('f-slug').disabled = !!ev;
   document.getElementById('f-slug-lock-note').style.display = ev ? 'block' : 'none';
@@ -567,6 +576,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     description: document.getElementById('f-description').value.trim() || null,
     event_date: document.getElementById('f-date').value || null,
     location: document.getElementById('f-location').value.trim() || null,
+    is_featured: document.getElementById('f-featured').checked,
     form_schema: collectFormSchema(),
     group_ids: [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value),
   };
