@@ -419,8 +419,8 @@ function dynamicFieldsHTML(key) {
   return currentFormSchema.map(field => {
     const fid = 'att-field-' + key + '-' + field.id;
     const iid = 'att-input-' + key + '-' + field.id;
-    if (field.type === 'select') {
-      const options = field.options.map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('');
+    if (field.type === 'select' || field.type === 'train') {
+      const options = (field.options || []).map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('');
       return `
         <div class="field" id="${fid}" data-field-id="${field.id}" data-field-type="select" data-required="${!!field.required}">
           <label>${escapeHtml(field.label)}${field.required ? '' : ' <span class="hint">選填</span>'}</label>
@@ -495,7 +495,7 @@ function prefillAttendeeBlock(key, data) {
   currentFormSchema.forEach(field => {
     const value = extraData[field.id];
     if (value === undefined || value === null || value === '') return;
-    if (field.type === 'select') {
+    if (field.type === 'select' || field.type === 'train') {
       const sel = document.getElementById('att-input-' + key + '-' + field.id);
       if (sel) sel.value = value;
     } else if (field.type === 'toggle') {
@@ -654,7 +654,7 @@ function applyPersonToBlock(key, p) {
   currentFormSchema.forEach(field => {
     const value = personValueForLabel(field.label || '', p);
     if (!value) return;
-    if (field.type === 'select') {
+    if (field.type === 'select' || field.type === 'train') {
       const sel = document.getElementById('att-input-' + key + '-' + field.id);
       if (sel && Array.from(sel.options).some(o => o.value === value)) sel.value = value;
     } else if (field.type === 'toggle') {

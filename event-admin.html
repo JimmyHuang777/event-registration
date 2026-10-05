@@ -462,6 +462,24 @@ document.getElementById('new-event-btn').addEventListener('click', () => openFor
 
 /* ---------- Custom field builder (same shape as the dashboard's) ---------- */
 
+// 火車車次（瑞穗站抵達時間）— 依抵達時間排序；選項文字即為存入報名資料的值
+const TRAIN_OPTIONS = [
+  '306 自強 (3000) · 07:15 抵達瑞穗',
+  '402 普悠瑪 · 08:58 抵達瑞穗',
+  '406 自強 (3000) · 09:51 抵達瑞穗',
+  '410 自強 (3000) · 11:15 抵達瑞穗',
+  '472 自強 (3000) · 11:58 抵達瑞穗',
+  '416 太魯閣 · 12:35 抵達瑞穗',
+  '422 自強 (3000) · 13:53 抵達瑞穗',
+  '420 普悠瑪 · 14:51 抵達瑞穗',
+  '428 自強 (3000) · 17:18 抵達瑞穗',
+  '432 自強 (3000) · 18:13 抵達瑞穗',
+  '434 自強 (3000) · 19:32 抵達瑞穗',
+  '442 自強 (3000) · 20:28 抵達瑞穗',
+  '438 自強 (3000) · 21:35 抵達瑞穗',
+  '448 普悠瑪 · 23:12 抵達瑞穗'
+];
+
 function addFieldBuilderRow(prefill) {
   const id = 'fb-' + (fieldBuilderCount++);
   const isRequired = !!(prefill && prefill.required);
@@ -477,6 +495,7 @@ function addFieldBuilderRow(prefill) {
         <option value="select" ${prefill && prefill.type === 'select' ? 'selected' : ''}>下拉選單</option>
         <option value="toggle" ${prefill && prefill.type === 'toggle' ? 'selected' : ''}>按鈕 (兩選一)</option>
         <option value="text" ${prefill && prefill.type === 'text' ? 'selected' : ''}>文字輸入</option>
+        <option value="train" ${prefill && prefill.type === 'train' ? 'selected' : ''}>火車車次（顯示瑞穗抵達時間）</option>
       </select>
       <button type="button" class="remove-field-btn">✕</button>
     </div>
@@ -504,6 +523,15 @@ function addFieldBuilderRow(prefill) {
     const type = typeSelect.value;
     optionsInput.style.display = type === 'select' ? 'block' : 'none';
     togglePreset.style.display = type === 'toggle' ? 'block' : 'none';
+    if (type === 'train' && !wrap.querySelector('.fb-train-hint')) {
+      const h = document.createElement('div');
+      h.className = 'fb-train-hint';
+      h.style.cssText = 'font-size:12px;color:#888;margin:4px 0';
+      h.textContent = '報名者會看到下拉選單：車次、車種與抵達瑞穗時間（共 ' + TRAIN_OPTIONS.length + ' 班）';
+      wrap.querySelector('.fb-row2').after(h);
+    }
+    const th = wrap.querySelector('.fb-train-hint');
+    if (th) th.style.display = type === 'train' ? 'block' : 'none';
   }
   typeSelect.addEventListener('change', syncFieldTypeUI);
   syncFieldTypeUI();
@@ -536,6 +564,9 @@ function collectFormSchema() {
     }
     if (type === 'toggle') {
       field.options = row.querySelector('.fb-toggle-preset').value.split(',');
+    }
+    if (type === 'train') {
+      field.options = TRAIN_OPTIONS.slice();
     }
     formSchema.push(field);
   });
