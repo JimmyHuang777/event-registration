@@ -20,6 +20,7 @@ on:
       - 'supabase/functions/kitchen-api/**'
       - 'supabase/functions/profile-api/**'
       - 'supabase/functions/admin-roles-api/**'
+      - 'supabase/functions/calendar-api/**'
 
 jobs:
   deploy:
@@ -103,5 +104,10 @@ jobs:
 
       - name: Deploy admin-roles-api Edge Function
         run: supabase functions deploy admin-roles-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy calendar-api Edge Function
+        run: supabase functions deploy calendar-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

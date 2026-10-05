@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>行事曆 Calendar</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --line-green: #06C755; --canvas: #F5F6F8; --paper: #FFFFFF;
+    --ink: #1A1A1A; --ink-soft: #6B7280; --line: #E5E7EB; --error: #E0483E;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; background: var(--canvas); color: var(--ink); }
+  #app { min-height: 100vh; display: flex; flex-direction: column; }
+  .state-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1; padding: 32px 24px; }
+  .state-screen.active { display: flex; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--canvas);
+    border-top-color: var(--line-green); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-circle {
+    width: 56px; height: 56px; border-radius: 50%; color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; background: var(--error);
+  }
+  .state-screen h2 { font-size: 17px; margin: 0 0 6px; }
+  .state-screen p { font-size: 13.5px; color: var(--ink-soft); margin: 0; max-width: 320px; line-height: 1.5; white-space: pre-wrap; }
+  .submit-btn {
+    padding: 12px 20px; background: var(--line-green); color: white; border: none;
+    border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
+  }
+
+  #main-screen { display: none; flex-direction: column; flex: 1; }
+  .header { padding: 22px 20px 16px; background: var(--paper); border-bottom: 1px solid var(--line); }
+  .header h1 { font-size: 19px; margin: 0 0 4px; }
+  .header p { font-size: 13px; color: var(--ink-soft); margin: 0; }
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
+  .profile-row img { width: 36px; height: 36px; border-radius: 50%; background: var(--line); object-fit: cover; }
+  .profile-row .name { font-size: 14.5px; font-weight: 600; }
+
+  .menu-list { padding: 6px 16px 32px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .menu-card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+    text-decoration: none; color: inherit;
+  }
+  .menu-card:active { background: var(--canvas); }
+  .menu-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; color: white;
+  }
+  .menu-body { flex: 1; min-width: 0; }
+  .menu-body .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .menu-body .desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+  .menu-arrow { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .section-label { font-size: 12px; color: var(--ink-soft); font-weight: 700; margin: 14px 4px 2px; letter-spacing: 0.02em; }
+
+  .empty-state { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+
+  .tabs { display: flex; background: var(--paper); border-bottom: 1px solid var(--line); }
+  .tab { flex: 1; text-align: center; padding: 12px 0; font-size: 14px; font-weight: 700; color: var(--ink-soft); border: none; background: none; border-bottom: 3px solid transparent; cursor: pointer; }
+  .tab.active { color: var(--line-green); border-bottom-color: var(--line-green); }
+  .panel { padding: 16px; display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field input[type=text], .field input[type=tel] { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; background: var(--paper); }
+  .field.has-error input { border-color: var(--error); }
+  .field-error { display: none; color: var(--error); font-size: 12px; margin-top: 4px; }
+  .field.has-error .field-error { display: block; }
+  .seg { display: flex; gap: 8px; }
+  .seg button { flex: 1; padding: 10px 0; border: 1px solid var(--line); background: var(--paper); border-radius: 10px; font-size: 15px; cursor: pointer; }
+  .seg button.selected { background: var(--line-green); color: #fff; border-color: var(--line-green); }
+  .primary-btn { width: 100%; padding: 13px; background: var(--line-green); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .primary-btn:disabled { opacity: .6; }
+  .ghost-btn { padding: 8px 12px; background: none; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--ink); }
+  .ghost-btn.danger { color: var(--error); }
+  .member-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .member-name { font-size: 15px; font-weight: 700; }
+  .rel-badge { font-size: 12px; background: #E7F8EE; color: #067A37; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .member-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.5; }
+  .member-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1A1A1A; color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 13px; display: none; z-index: 10; }
+
+  .cal-nav { display:flex; align-items:center; justify-content:space-between; padding:12px 16px 4px; }
+  .cal-nav .m { font-size:17px; font-weight:800; }
+  .cal-nav button { border:1px solid var(--line); background:var(--paper); border-radius:10px; width:38px; height:34px; font-size:16px; cursor:pointer; }
+  .cal-today-btn { width:auto !important; padding:0 12px; font-size:13px !important; }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; padding:8px 12px; }
+  .cal-dow { text-align:center; font-size:11.5px; color:var(--ink-soft); padding:4px 0; }
+  .cal-day { min-height:54px; background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:3px 3px 2px; font-size:12px; cursor:pointer; overflow:hidden; }
+  .cal-day.empty { background:transparent; border-color:transparent; cursor:default; }
+  .cal-day.today { border-color:var(--line-green); box-shadow:inset 0 0 0 1px var(--line-green); }
+  .cal-day.selected { background:#E7F8EE; }
+  .cal-day .n { font-weight:700; display:block; margin-bottom:2px; }
+  .cal-day.sun .n { color:#DC2626; }
+  .cal-chip { display:block; font-size:10px; line-height:1.25; border-radius:4px; padding:1px 3px; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#fff; background:#06C755; }
+  .cal-chip.event { background:#F97316; }
+  .cal-chip.task { background:#7C3AED; }
+  .cal-more { font-size:10px; color:var(--ink-soft); }
+  .cal-list { padding:4px 16px 32px; }
+  .cal-list h3 { font-size:14px; margin:14px 2px 8px; }
+  .cal-item { display:block; text-decoration:none; color:inherit; background:var(--paper); border:1px solid var(--line); border-left:5px solid #06C755; border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .cal-item.event { border-left-color:#F97316; }
+  .cal-item.task { border-left-color:#7C3AED; }
+  .cal-item .t { font-size:15px; font-weight:700; }
+  .cal-item .s { font-size:12.5px; color:var(--ink-soft); margin-top:3px; line-height:1.45; }
+  .cal-kind { font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; margin-right:6px; background:#E7F8EE; color:#067A37; }
+  .cal-kind.event { background:#FFEDD5; color:#C2410C; }
+  .cal-kind.task { background:#EDE9FE; color:#6D28D9; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="loading-screen" class="state-screen active">
+    <div class="spinner"></div>
+    <p>連接 LINE 中 · Connecting to LINE…</p>
+  </div>
+
+  <div id="error-screen" class="state-screen">
+    <div class="icon-circle">!</div>
+    <h2>連線失敗</h2>
+    <p id="error-message">請透過 LINE 開啟此頁面。</p>
+    <button type="button" class="submit-btn" id="relogin-btn">重新登入 Re-login</button>
+  </div>
+
+  <div id="main-screen">
+    <div class="header">
+      <a href="home.html" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">‹ 返回群聖家園</a>
+      <h1 style="margin-top:6px;">行事曆 Calendar</h1>
+      <p>班程、行功了愿與各項行程一覽</p>
+    </div>
+    <div class="cal-nav">
+      <button type="button" id="cal-prev">‹</button>
+      <span class="m" id="cal-title">—</span>
+      <span style="display:flex; gap:6px;"><button type="button" class="cal-today-btn" id="cal-today">今天</button><button type="button" id="cal-next">›</button></span>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-list" id="cal-list"></div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://ixzvbyxhzttvnheivsoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enZieXhoenR0dm5oZWl2c29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTUxNzEsImV4cCI6MjEwNDc5MTE3MX0.IbPkpX8fepK4o3yDXHOGH0UXt1n3-17YXdcv36LxJuU';
+const EDGE_FUNCTION_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/calendar-api';
+
+const supabasePublic = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let LIFF_ID = null;
+let idToken = null;
+let lineProfile = null;
+
+function showScreen(name) {
+  document.querySelectorAll('.state-screen').forEach(el => el.classList.remove('active'));
+  document.getElementById('main-screen').style.display = 'none';
+  if (name === 'main') {
+    document.getElementById('main-screen').style.display = 'flex';
+  } else {
+    document.getElementById(name + '-screen').classList.add('active');
+  }
+}
+
+function setLoadingText(text) {
+  const p = document.querySelector('#loading-screen p');
+  if (p) p.textContent = text;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'Request') + ' timed out')), ms)),
+  ]);
+}
+
+async function callApi(action, extra) {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 1800);
+}
+
+/* ---------- Calendar ---------- */
+
+const KIND_LABEL = { entry: '行事曆', event: '班程報名', task: '行功了愿' };
+let calYear, calMonth, calItems = [], calSelected = null;
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+function todayStr() { return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); }
+function dateStr(y, m, d) { return y + '-' + pad2(m) + '-' + pad2(d); }
+
+// items on a given date (multi-day entries cover every day in their range)
+function itemsOn(ds) {
+  return calItems.filter(it => it.date <= ds && ds <= (it.end_date || it.date));
+}
+
+function renderCalendar() {
+  document.getElementById('cal-title').textContent = calYear + ' 年 ' + calMonth + ' 月';
+  const firstDow = new Date(calYear, calMonth - 1, 1).getDay();
+  const days = new Date(calYear, calMonth, 0).getDate();
+  const today = todayStr();
+  let html = ['日', '一', '二', '三', '四', '五', '六'].map(d => '<div class="cal-dow">' + d + '</div>').join('');
+  for (let i = 0; i < firstDow; i++) html += '<div class="cal-day empty"></div>';
+  for (let d = 1; d <= days; d++) {
+    const ds = dateStr(calYear, calMonth, d);
+    const list = itemsOn(ds);
+    const cls = ['cal-day'];
+    if ((firstDow + d - 1) % 7 === 0) cls.push('sun');
+    if (ds === today) cls.push('today');
+    if (ds === calSelected) cls.push('selected');
+    html += '<div class="' + cls.join(' ') + '" data-date="' + ds + '"><span class="n">' + d + '</span>' +
+      list.slice(0, 2).map(it => '<span class="cal-chip ' + it.kind + '">' + escapeHtml(it.title) + '</span>').join('') +
+      (list.length > 2 ? '<span class="cal-more">+' + (list.length - 2) + '</span>' : '') + '</div>';
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+  renderCalList();
+}
+
+function itemHTML(it) {
+  const range = it.end_date && it.end_date !== it.date ? it.date.slice(5).replace('-', '/') + ' – ' + it.end_date.slice(5).replace('-', '/') : '';
+  const sub = [range, it.time, it.place && ('📍 ' + it.place), it.notes].filter(Boolean).map(escapeHtml).join('　');
+  const tag = it.kind === 'event' ? 'a' : (it.kind === 'task' ? 'a' : 'div');
+  const href = it.kind === 'event' ? ' href="index.html?event=' + encodeURIComponent(it.slug) + '"' : (it.kind === 'task' ? ' href="tasks-once.html"' : '');
+  return '<' + tag + href + ' class="cal-item ' + it.kind + '"><div class="t"><span class="cal-kind ' + it.kind + '">' + KIND_LABEL[it.kind] + '</span>' + escapeHtml(it.title) + '</div>' +
+    (sub ? '<div class="s">' + sub + '</div>' : '') + '</' + tag + '>';
+}
+
+function renderCalList() {
+  const el = document.getElementById('cal-list');
+  if (calSelected) {
+    const list = itemsOn(calSelected);
+    const [y, m, d] = calSelected.split('-');
+    el.innerHTML = '<h3>' + parseInt(m, 10) + ' 月 ' + parseInt(d, 10) + ' 日</h3>' + (list.length ? list.map(itemHTML).join('') : '<div class="empty-state" style="padding:20px;">這天沒有行程。</div>') +
+      '<button type="button" class="ghost-btn" id="cal-show-all" style="margin-top:6px;">顯示整個月</button>';
+    document.getElementById('cal-show-all').addEventListener('click', () => { calSelected = null; renderCalendar(); });
+    return;
+  }
+  if (calItems.length === 0) { el.innerHTML = '<div class="empty-state">這個月沒有行程。</div>'; return; }
+  let last = null, html = '';
+  calItems.forEach(it => {
+    if (it.date !== last) { html += '<h3>' + parseInt(it.date.slice(5, 7), 10) + ' 月 ' + parseInt(it.date.slice(8, 10), 10) + ' 日</h3>'; last = it.date; }
+    html += itemHTML(it);
+  });
+  el.innerHTML = html;
+}
+
+async function loadMonth() {
+  document.getElementById('cal-list').innerHTML = '<div class="empty-state">載入中…</div>';
+  try {
+    const data = await callApi('month', { year: calYear, month: calMonth });
+    calItems = data.items || [];
+  } catch (err) {
+    calItems = [];
+    toast('載入失敗：' + err.message);
+  }
+  renderCalendar();
+}
+
+function shiftMonth(delta) {
+  calMonth += delta;
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  calSelected = null;
+  loadMonth();
+}
+document.getElementById('cal-prev').addEventListener('click', () => shiftMonth(-1));
+document.getElementById('cal-next').addEventListener('click', () => shiftMonth(1));
+document.getElementById('cal-today').addEventListener('click', () => {
+  const t = todayStr(); calYear = +t.slice(0, 4); calMonth = +t.slice(5, 7); calSelected = t; loadMonth();
+});
+document.getElementById('cal-grid').addEventListener('click', (e) => {
+  const cell = e.target.closest('.cal-day[data-date]');
+  if (!cell) return;
+  calSelected = cell.dataset.date;
+  renderCalendar();
+  document.getElementById('cal-list').scrollIntoView({ behavior: 'smooth' });
+});
+
+/* ---------- LIFF boot flow ---------- */
+
+async function initLiff() {
+  try {
+    setLoadingText('讀取設定中…');
+    const { data: liffRow, error: liffErr } = await withTimeout(
+      supabasePublic.from('liff_apps').select('liff_id').eq('purpose', 'home').maybeSingle(),
+      10000, 'liff_apps lookup'
+    );
+    if (liffErr || !liffRow || !liffRow.liff_id) {
+      document.getElementById('error-message').textContent =
+        '此頁面尚未設定 LINE 連結，請聯繫管理員在後台建立連結。';
+      showScreen('error');
+      return;
+    }
+    LIFF_ID = liffRow.liff_id;
+
+    setLoadingText('liff.init()…');
+    // liff.init() occasionally hangs on the first attempt inside LINE's
+    // in-app browser; one retry after a short wait usually clears it.
+    try {
+      await withTimeout(liff.init({ liffId: LIFF_ID }), 12000, 'liff.init()');
+    } catch (initErr) {
+      if (!/timed out/i.test(String(initErr && initErr.message))) throw initErr;
+      let retried = false;
+      try { retried = sessionStorage.getItem('calendarInitRetried') === '1'; sessionStorage.setItem('calendarInitRetried', '1'); } catch (e) {}
+      if (!retried) { window.location.reload(); return; }
+      throw initErr;
+    }
+
+    try { sessionStorage.removeItem('calendarInitRetried'); } catch (e) {}
+
+    if (!liff.isLoggedIn()) {
+      setLoadingText('導向 LINE 登入…');
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    idToken = liff.getIDToken();
+    lineProfile = await withTimeout(liff.getProfile(), 10000, 'liff.getProfile()');
+
+    if (!idToken) {
+      document.getElementById('error-message').textContent =
+        'LIFF app is missing the "openid" scope.\nAdd it in LINE Developers Console → LIFF → Scopes.';
+      showScreen('error');
+      return;
+    }
+
+    setLoadingText('載入行事曆…');
+    const t = todayStr();
+    calYear = +t.slice(0, 4); calMonth = +t.slice(5, 7);
+    await loadMonth();
+
+    showScreen('main');
+  } catch (err) {
+    console.error('LIFF init failed:', err);
+    const msg = (err && err.message) ? err.message : '';
+    if (/access token expired/i.test(msg)) {
+      document.getElementById('error-message').textContent = '您的 LINE 登入已過期，請點擊下方按鈕重新登入。';
+    } else {
+      document.getElementById('error-message').textContent = '請透過 LINE 開啟此頁面。\n\n' + msg;
+    }
+    showScreen('error');
+  }
+}
+
+document.getElementById('relogin-btn').addEventListener('click', () => {
+  try { liff.logout(); } catch (e) {}
+  window.location.reload();
+});
+
+initLiff();
+</script>
+</body>
+</html>

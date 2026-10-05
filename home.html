@@ -228,6 +228,19 @@ async function renderMenu(menuData) {
   const listEl = document.getElementById('menu-list');
   listEl.innerHTML = '';
 
+  // Always shown to everyone: the shared calendar.
+  appendSectionLabel(listEl, '行事曆 Calendar', { value: null });
+  {
+    const calCard = document.createElement('a');
+    calCard.className = 'menu-card';
+    calCard.href = 'calendar.html';
+    calCard.innerHTML = `
+      <div class="menu-icon" style="background:#EF4444;">📆</div>
+      <div class="menu-body"><div class="title">行事曆 Calendar</div><div class="desc">班程、行功了愿與各項行程的月曆</div></div>
+      <div class="menu-arrow">›</div>`;
+    listEl.appendChild(calCard);
+  }
+
   // Always shown to everyone: personal info + family/friend info, which
   // the event registration page can fill in with one tap.
   const lastSection0 = { value: null };
