@@ -5,7 +5,7 @@
 //   month { year, month }  — everything dated inside that month:
 //     - calendar_entries   (純行事曆行程，所有成員可見)
 //     - events             (班程報名；active 且對該成員可見)
-//     - one-time jobs      (task_templates recurrence = 'once'；可見者)
+//     - jobs               (only when with_tasks=true; every recurrence, visible ones)
 // Visibility for events / jobs is the same rule used by home-api:
 // no group rows = public; otherwise group member, or altar-visible.
 // Auth: LINE ID token. Deployed with --no-verify-jwt.
@@ -114,15 +114,23 @@ serve(async (req) => {
         items.push({ kind: "event", id: e.id, date: e.event_date, end_date: null, title: e.name, place: e.location, slug: e.slug }));
     }
 
-    // 3) one-time jobs dated in the month
-    const { data: tpls } = await supabase
-      .from("task_templates").select("id, title, place, start_date, altar_id")
-      .eq("is_active", true).eq("recurrence", "once").gte("start_date", first).lte("start_date", last);
-    if (tpls && tpls.length > 0) {
-      const { data: links } = await supabase.from("task_template_groups").select("template_id, group_id").in("template_id", tpls.map((t: any) => t.id));
-      const ok = await visibleIds(tpls, (links || []).map((l: any) => ({ id: l.template_id, group_id: l.group_id })), myGroupIds, userId);
-      tpls.filter((t: any) => ok.has(t.id)).forEach((t: any) =>
-        items.push({ kind: "task", id: t.id, date: t.start_date, end_date: null, title: t.title, place: t.place }));
+    // 3) jobs (every recurrence) — only when the caller asks (with_tasks),
+    //    since daily jobs add one entry per day.
+    if (body.with_tasks) {
+      await supabase.rpc("ensure_task_instances", { p_from: first, p_to: last });
+      const { data: insts } = await supabase
+        .from("task_instances")
+        .select("occurrence_date, template_id, task_templates ( id, title, place, recurrence, is_active, altar_id )")
+        .gte("occurrence_date", first).lte("occurrence_date", last)
+        .order("occurrence_date", { ascending: true });
+      const live = (insts || []).filter((i: any) => i.task_templates && i.task_templates.is_active);
+      if (live.length > 0) {
+        const tpls = Array.from(new Map(live.map((i: any) => [i.template_id, i.task_templates])).values());
+        const { data: links } = await supabase.from("task_template_groups").select("template_id, group_id").in("template_id", tpls.map((t: any) => t.id));
+        const ok = await visibleIds(tpls, (links || []).map((l: any) => ({ id: l.template_id, group_id: l.group_id })), myGroupIds, userId);
+        live.filter((i: any) => ok.has(i.template_id)).forEach((i: any) =>
+          items.push({ kind: "task", id: i.template_id, date: i.occurrence_date, end_date: null, title: i.task_templates.title, place: i.task_templates.place, once: i.task_templates.recurrence === "once" }));
+      }
     }
 
     items.sort((a, b) => a.date.localeCompare(b.date));

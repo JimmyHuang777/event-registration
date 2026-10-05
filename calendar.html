@@ -91,6 +91,9 @@
   .cal-nav .m { font-size:17px; font-weight:800; }
   .cal-nav button { border:1px solid var(--line); background:var(--paper); border-radius:10px; width:38px; height:34px; font-size:16px; cursor:pointer; }
   .cal-today-btn { width:auto !important; padding:0 12px; font-size:13px !important; }
+  .cal-filter { display:flex; gap:16px; padding:6px 16px 0; font-size:13.5px; flex-wrap:wrap; }
+  .cal-filter label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .cal-filter .dot { width:10px; height:10px; border-radius:3px; display:inline-block; }
   .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; padding:8px 12px; }
   .cal-dow { text-align:center; font-size:11.5px; color:var(--ink-soft); padding:4px 0; }
   .cal-day { min-height:54px; background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:3px 3px 2px; font-size:12px; cursor:pointer; overflow:hidden; }
@@ -141,6 +144,11 @@
       <button type="button" id="cal-prev">‹</button>
       <span class="m" id="cal-title">—</span>
       <span style="display:flex; gap:6px;"><button type="button" class="cal-today-btn" id="cal-today">今天</button><button type="button" id="cal-next">›</button></span>
+    </div>
+    <div class="cal-filter">
+      <label><input type="checkbox" id="cal-f-entry" checked> <span class="dot" style="background:#06C755;"></span>行事曆</label>
+      <label><input type="checkbox" id="cal-f-event" checked> <span class="dot" style="background:#F97316;"></span>報名</label>
+      <label><input type="checkbox" id="cal-f-task"> <span class="dot" style="background:#7C3AED;"></span>工作</label>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
     <div class="cal-list" id="cal-list"></div>
@@ -208,7 +216,10 @@ function toast(msg) {
 
 /* ---------- Calendar ---------- */
 
-const KIND_LABEL = { entry: '行事曆', event: '班程報名', task: '行功了愿' };
+const KIND_LABEL = { entry: '行事曆', event: '報名', task: '工作' };
+const FILTER_KEY = 'calendarFilters';
+let calFilters = { entry: true, event: true, task: false };
+try { Object.assign(calFilters, JSON.parse(localStorage.getItem(FILTER_KEY) || '{}')); } catch (e) {}
 let calYear, calMonth, calItems = [], calSelected = null;
 
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -216,8 +227,9 @@ function todayStr() { return new Date(Date.now() + 8 * 3600 * 1000).toISOString(
 function dateStr(y, m, d) { return y + '-' + pad2(m) + '-' + pad2(d); }
 
 // items on a given date (multi-day entries cover every day in their range)
+function shownItems() { return calItems.filter(it => calFilters[it.kind]); }
 function itemsOn(ds) {
-  return calItems.filter(it => it.date <= ds && ds <= (it.end_date || it.date));
+  return shownItems().filter(it => it.date <= ds && ds <= (it.end_date || it.date));
 }
 
 function renderCalendar() {
@@ -246,7 +258,7 @@ function itemHTML(it) {
   const range = it.end_date && it.end_date !== it.date ? it.date.slice(5).replace('-', '/') + ' – ' + it.end_date.slice(5).replace('-', '/') : '';
   const sub = [range, it.time, it.place && ('📍 ' + it.place), it.notes].filter(Boolean).map(escapeHtml).join('　');
   const tag = it.kind === 'event' ? 'a' : (it.kind === 'task' ? 'a' : 'div');
-  const href = it.kind === 'event' ? ' href="index.html?event=' + encodeURIComponent(it.slug) + '"' : (it.kind === 'task' ? ' href="tasks-once.html"' : '');
+  const href = it.kind === 'event' ? ' href="index.html?event=' + encodeURIComponent(it.slug) + '"' : (it.kind === 'task' ? (it.once ? ' href="tasks-once.html"' : ' href="tasks.html"') : '');
   return '<' + tag + href + ' class="cal-item ' + it.kind + '"><div class="t"><span class="cal-kind ' + it.kind + '">' + KIND_LABEL[it.kind] + '</span>' + escapeHtml(it.title) + '</div>' +
     (sub ? '<div class="s">' + sub + '</div>' : '') + '</' + tag + '>';
 }
@@ -261,9 +273,10 @@ function renderCalList() {
     document.getElementById('cal-show-all').addEventListener('click', () => { calSelected = null; renderCalendar(); });
     return;
   }
-  if (calItems.length === 0) { el.innerHTML = '<div class="empty-state">這個月沒有行程。</div>'; return; }
+  const shown = shownItems();
+  if (shown.length === 0) { el.innerHTML = '<div class="empty-state">這個月沒有行程。</div>'; return; }
   let last = null, html = '';
-  calItems.forEach(it => {
+  shown.forEach(it => {
     if (it.date !== last) { html += '<h3>' + parseInt(it.date.slice(5, 7), 10) + ' 月 ' + parseInt(it.date.slice(8, 10), 10) + ' 日</h3>'; last = it.date; }
     html += itemHTML(it);
   });
@@ -273,7 +286,7 @@ function renderCalList() {
 async function loadMonth() {
   document.getElementById('cal-list').innerHTML = '<div class="empty-state">載入中…</div>';
   try {
-    const data = await callApi('month', { year: calYear, month: calMonth });
+    const data = await callApi('month', { year: calYear, month: calMonth, with_tasks: !!calFilters.task });
     calItems = data.items || [];
   } catch (err) {
     calItems = [];
@@ -281,6 +294,16 @@ async function loadMonth() {
   }
   renderCalendar();
 }
+
+function syncFilterBoxes() {
+  ['entry', 'event', 'task'].forEach(k => { document.getElementById('cal-f-' + k).checked = !!calFilters[k]; });
+}
+['entry', 'event', 'task'].forEach(k => document.getElementById('cal-f-' + k).addEventListener('change', (e) => {
+  calFilters[k] = e.target.checked;
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify(calFilters)); } catch (err) {}
+  if (k === 'task' && e.target.checked) loadMonth(); else renderCalendar();
+}));
+syncFilterBoxes();
 
 function shiftMonth(delta) {
   calMonth += delta;

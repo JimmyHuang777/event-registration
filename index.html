@@ -274,7 +274,7 @@
 
     <form id="reg-form">
       <div class="section-title" id="add-section-title">新增報名人員 Add attendees</div>
-      <p style="font-size:12.5px; color:var(--ink-soft); margin:-4px 20px 16px; line-height:1.5;">
+      <p id="add-hint" style="font-size:12.5px; color:var(--ink-soft); margin:-4px 20px 16px; line-height:1.5;">
         可一次幫多位親友報名，點擊下方「新增一位」即可。
       </p>
 
@@ -830,7 +830,7 @@ async function initLiff() {
     const { data: ev, error: evError } = await withTimeout(
       supabasePublic
         .from('events')
-        .select('id, name, event_date, location, description, form_schema')
+        .select('id, name, event_date, location, description, form_schema, allow_duplicate_registration')
         .eq('slug', currentEventSlug)
         .eq('is_active', true)
         .single(),
@@ -864,6 +864,9 @@ async function initLiff() {
       const descEl = document.getElementById('event-description');
       descEl.textContent = ev.description;
       descEl.style.display = 'block';
+    }
+    if (ev.allow_duplicate_registration) {
+      document.getElementById('add-hint').innerHTML += '<br>本活動開放重複報名：同一位也可以再次送出（例如多場次或多次參加）。';
     }
     addAttendeeBlock('');
 

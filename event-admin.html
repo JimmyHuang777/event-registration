@@ -218,6 +218,14 @@
 
       <div class="field">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="f-allow-dup" style="width:18px; height:18px;">
+          <span>🔁 允許同一位用戶重複報名</span>
+        </label>
+        <p class="hint">預設不允許。勾選後，同一人可以用相同的姓名與電話一再送出報名</p>
+      </div>
+
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" id="f-featured" style="width:18px; height:18px;">
           <span>⭐ 顯示在「群聖家園」最上方的「近期重要班程」</span>
         </label>
@@ -585,6 +593,7 @@ function openForm(ev) {
   document.getElementById('f-date').value = ev ? (ev.event_date || '') : '';
   document.getElementById('f-location').value = ev ? (ev.location || '') : '';
   document.getElementById('f-featured').checked = !!(ev && ev.is_featured);
+  document.getElementById('f-allow-dup').checked = !!(ev && ev.allow_duplicate_registration);
   document.getElementById('f-transport').checked = !!(ev && ev.offers_transport);
   document.getElementById('f-lodging').checked = !!(ev && ev.offers_lodging);
   fillAltarSelect(ev ? (ev.altar_id || '') : '');
@@ -624,6 +633,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     event_date: document.getElementById('f-date').value || null,
     location: document.getElementById('f-location').value.trim() || null,
     is_featured: document.getElementById('f-featured').checked,
+    allow_duplicate_registration: document.getElementById('f-allow-dup').checked,
     offers_transport: document.getElementById('f-transport').checked,
     offers_lodging: document.getElementById('f-lodging').checked,
     altar_id: altarValueForSave(),
