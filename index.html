@@ -479,7 +479,6 @@ function collectAttendeeData(key) {
   });
   return {
     name: document.getElementById('att-name-' + key).value.trim(),
-    phone: document.getElementById('att-phone-' + key).value.trim(),
     notes: document.getElementById('att-notes-' + key).value.trim() || null,
     extra_data: extra,
   };
@@ -487,7 +486,6 @@ function collectAttendeeData(key) {
 
 function prefillAttendeeBlock(key, data) {
   document.getElementById('att-name-' + key).value = data.attendee_name || '';
-  document.getElementById('att-phone-' + key).value = data.attendee_phone || '';
   const notesEl = document.getElementById('att-notes-' + key);
   if (notesEl) notesEl.value = data.notes || '';
 
@@ -513,17 +511,10 @@ function prefillAttendeeBlock(key, data) {
 function validateAttendeeBlock(key) {
   let valid = true;
   const nameInput = document.getElementById('att-name-' + key);
-  const phoneInput = document.getElementById('att-phone-' + key);
-  const phonePattern = /^[0-9\-+ ]{8,15}$/;
 
   const name = nameInput.value.trim();
   nameInput.closest('.field').classList.toggle('has-error', !name);
   if (!name) valid = false;
-
-  const phone = phoneInput.value.trim();
-  const phoneValid = phonePattern.test(phone);
-  phoneInput.closest('.field').classList.toggle('has-error', !phoneValid);
-  if (!phoneValid) valid = false;
 
   currentFormSchema.forEach(field => {
     if (!field.required) return;
@@ -562,11 +553,6 @@ function attendeeBlockHTML(key, prefillName) {
         <label>姓名 Full name</label>
         <input type="text" id="att-name-${key}" value="${escapeHtml(prefillName || '')}" required>
         <div class="field-error">請輸入姓名</div>
-      </div>
-      <div class="field">
-        <label>手機號碼 Phone</label>
-        <input type="tel" id="att-phone-${key}" placeholder="0912-345-678" required>
-        <div class="field-error">請輸入正確的手機號碼</div>
       </div>
       <div id="att-dynamic-${key}"></div>
       <div class="field">
@@ -650,7 +636,6 @@ function personValueForLabel(label, p) {
 
 function applyPersonToBlock(key, p) {
   document.getElementById('att-name-' + key).value = p.full_name || '';
-  document.getElementById('att-phone-' + key).value = p.phone || '';
   currentFormSchema.forEach(field => {
     const value = personValueForLabel(field.label || '', p);
     if (!value) return;
@@ -702,7 +687,6 @@ function existingCardHTML(r) {
         <div class="existing-card-name">${escapeHtml(r.attendee_name)}</div>
         <span class="existing-status-badge ${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
       </div>
-      <div class="existing-card-sub">${escapeHtml(r.attendee_phone || '')}</div>
       ${details ? `<div class="existing-card-details">${details}</div>` : ''}
       <div class="existing-card-actions">
         <button type="button" class="link-btn edit-existing-btn" data-reg-id="${r.id}">編輯</button>
@@ -736,11 +720,6 @@ function startEditExisting(regId) {
       <input type="text" id="att-name-${key}" required>
       <div class="field-error">請輸入姓名</div>
     </div>
-    <div class="field">
-      <label>手機號碼 Phone</label>
-      <input type="tel" id="att-phone-${key}" required>
-      <div class="field-error">請輸入正確的手機號碼</div>
-    </div>
     <div id="att-dynamic-${key}"></div>
     <div class="field">
       <label>備註 Notes <span class="hint">選填</span></label>
@@ -773,7 +752,7 @@ document.getElementById('existing-list').addEventListener('click', async (e) => 
     saveBtn.textContent = '儲存中…';
     try {
       const { registration } = await callApi('update_attendee', {
-        registration_id: regId, name: data.name, phone: data.phone,
+        registration_id: regId, name: data.name,
         extra_data: data.extra_data, notes: data.notes,
       });
       const idx = existingRegistrations.findIndex(r => r.id === regId);
@@ -830,7 +809,7 @@ async function initLiff() {
     const { data: ev, error: evError } = await withTimeout(
       supabasePublic
         .from('events')
-        .select('id, name, event_date, location, description, form_schema, allow_duplicate_registration')
+        .select('id, name, event_date, location, description, form_schema')
         .eq('slug', currentEventSlug)
         .eq('is_active', true)
         .single(),
@@ -864,9 +843,6 @@ async function initLiff() {
       const descEl = document.getElementById('event-description');
       descEl.textContent = ev.description;
       descEl.style.display = 'block';
-    }
-    if (ev.allow_duplicate_registration) {
-      document.getElementById('add-hint').innerHTML += '<br>本活動開放重複報名：同一位也可以再次送出（例如多場次或多次參加）。';
     }
     addAttendeeBlock('');
 

@@ -137,32 +137,29 @@ serve(async (req) => {
 
         if (userErr) return json({ error: userErr.message }, 400);
 
-        // Unless the event allows repeat sign-ups, the same person (name + phone)
-        // can't be registered twice by the same submitter. (A DB trigger
+        // The same person (by name) can't be registered twice by the same submitter. (A DB trigger
         // enforces this too; this check just gives a friendly message.)
-        const { data: evRow } = await supabase.from("events").select("allow_duplicate_registration").eq("id", event_id).maybeSingle();
-        if (!evRow) return json({ error: "找不到這個活動。" }, 404);
-        if (!evRow.allow_duplicate_registration) {
-          const keyOf = (n: unknown, p: unknown) => String(n || "").trim().toLowerCase() + "|" + String(p || "").trim();
+        {
+          const keyOf = (n: unknown) => String(n || "").trim().toLowerCase();
           const seen = new Set<string>();
           for (const a of attendees) {
-            const k = keyOf(a.name, a.phone);
+            const k = keyOf(a.name);
             if (seen.has(k)) return json({ error: "「" + String(a.name).trim() + "」在這次送出中重複了；本活動不開放重複報名。" }, 409);
             seen.add(k);
           }
           const { data: mine } = await supabase
             .from("registrations").select("attendee_name, attendee_phone")
             .eq("event_id", event_id).eq("user_id", userRow.id).neq("status", "cancelled");
-          const had = new Set((mine || []).map((r: any) => keyOf(r.attendee_name, r.attendee_phone)));
-          const dup = attendees.find((a: any) => had.has(keyOf(a.name, a.phone)));
-          if (dup) return json({ error: "「" + String(dup.name).trim() + "」已經用相同的姓名與電話報名過了；本活動不開放重複報名。" }, 409);
+          const had = new Set((mine || []).map((r: any) => keyOf(r.attendee_name)));
+          const dup = attendees.find((a: any) => had.has(keyOf(a.name)));
+          if (dup) return json({ error: "「" + String(dup.name).trim() + "」已經用相同的姓名報名過了；本活動不開放重複報名。" }, 409);
         }
 
         const rowsToInsert = attendees.map((a: any) => ({
           user_id: userRow.id,
           event_id,
           attendee_name: String(a.name).trim(),
-          attendee_phone: a.phone || null,
+          attendee_phone: a.phone || "",
           notes: a.notes || null,
           extra_data: a.extra_data || {},
           status: "pending",

@@ -242,11 +242,6 @@ function personFormHTML(prefix, withRelationship, v) {
       <label>佛堂</label>
       <input type="text" id="${prefix}-shrine" value="${escapeHtml(v.shrine)}">
       <div class="field-error">請填寫佛堂</div>
-    </div>
-    <div class="field" data-f="phone">
-      <label>電話</label>
-      <input type="tel" id="${prefix}-phone" value="${escapeHtml(v.phone)}" placeholder="0912-345-678">
-      <div class="field-error">請填寫正確的電話</div>
     </div>`;
 }
 
@@ -268,15 +263,14 @@ function readPersonForm(prefix, withRelationship) {
   const out = {
     altar_name: val('altar_name'), full_name: val('full_name'),
     gender: document.getElementById(prefix + '-gender').dataset.value || '',
-    duty: val('duty'), shrine: val('shrine'), phone: val('phone'),
+    duty: val('duty'), shrine: val('shrine'),
   };
   if (withRelationship) out.relationship = val('relationship');
 
-  const phoneOk = /^[0-9\-+ ]{8,15}$/.test(out.phone);
   const root = document.getElementById(prefix + '-full_name').closest('.field').parentElement;
   let ok = true;
   Object.keys(out).forEach(f => {
-    const bad = f === 'phone' ? !phoneOk : !out[f];
+    const bad = !out[f];
     const el = root.querySelector('[data-f="' + f + '"]');
     if (el) el.classList.toggle('has-error', bad);
     if (bad) ok = false;
@@ -318,7 +312,7 @@ function renderFamilyList() {
     return;
   }
   el.innerHTML = myFamily.map(m => {
-    const bits = [m.gender, m.altar_name && ('公堂組別：' + m.altar_name), m.shrine && ('佛堂：' + m.shrine), m.duty && ('天職：' + m.duty), m.phone].filter(Boolean).map(escapeHtml).join('　');
+    const bits = [m.gender, m.altar_name && ('公堂組別：' + m.altar_name), m.shrine && ('佛堂：' + m.shrine), m.duty && ('天職：' + m.duty)].filter(Boolean).map(escapeHtml).join('　');
     return `
     <div class="card" data-id="${m.id}">
       <div class="member-top">

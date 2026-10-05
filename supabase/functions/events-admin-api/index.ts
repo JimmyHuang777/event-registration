@@ -149,7 +149,7 @@ serve(async (req) => {
       case "list_events": {
         const { data: events, error } = await supabase
           .from("events")
-          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging, allow_duplicate_registration")
+          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging")
           .order("event_date", { ascending: false });
         if (error) return json({ error: error.message }, 400);
 
@@ -193,7 +193,6 @@ serve(async (req) => {
         if ("altar_id" in body) extras.altar_id = body.altar_id || null;
         if ("offers_transport" in body) extras.offers_transport = !!body.offers_transport;
         if ("offers_lodging" in body) extras.offers_lodging = !!body.offers_lodging;
-        if ("allow_duplicate_registration" in body) extras.allow_duplicate_registration = !!body.allow_duplicate_registration;
         const groupIds: string[] = Array.isArray(body.group_ids) ? body.group_ids : [];
 
         if (!name) return json({ error: "請填寫活動名稱。" }, 400);

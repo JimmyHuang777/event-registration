@@ -277,7 +277,7 @@ serve(async (req) => {
         const carBrand = (body.car_brand || "").trim();
         const carColor = (body.car_color || "").trim();
         const carPlate = (body.car_plate || "").trim();
-        if (!contactName || !contactPhone) return json({ error: "請填寫司機姓名與聯絡電話。" }, 400);
+        if (!contactName) return json({ error: "請填寫司機姓名。" }, 400);
         if (!carBrand || !carPlate) return json({ error: "請填寫車輛廠牌與車牌號碼。" }, 400);
 
         const { data, error } = await supabase
@@ -505,7 +505,7 @@ serve(async (req) => {
 
         const passengerName = (passenger_name || "").trim();
         const passengerPhone = (passenger_phone || "").trim();
-        if (!passengerName || !passengerPhone) return json({ error: "請填寫姓名與聯絡電話。" }, 400);
+        if (!passengerName) return json({ error: "請填寫姓名。" }, 400);
 
         const additionalPassengers = Array.isArray(body.additional_passengers)
           ? body.additional_passengers.map((n: unknown) => String(n || "").trim()).filter((n: string) => n.length > 0)

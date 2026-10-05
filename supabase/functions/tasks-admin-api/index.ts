@@ -204,8 +204,8 @@ serve(async (req) => {
         const q = String(body.query || "").trim().replace(/[,()%]/g, " ");
         if (!q || !body.template_id) return json({ users: [] });
         const { data: found, error } = await supabase
-          .from("users").select("id, display_name, phone")
-          .or(`display_name.ilike.%${q}%,phone.ilike.%${q}%`).limit(15);
+          .from("users").select("id, display_name")
+          .ilike("display_name", `%${q}%`).limit(15);
         if (error) return json({ error: error.message }, 400);
         const users = [];
         for (const u of found || []) {

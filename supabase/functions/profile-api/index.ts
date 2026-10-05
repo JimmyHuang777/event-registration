@@ -71,9 +71,10 @@ function cleanPerson(body: any): { ok: true; value: Record<string, string> } | {
   if (!duty) return { ok: false, error: "請填寫天職。" };
   const shrine = str(body.shrine, 60);
   if (!shrine) return { ok: false, error: "請填寫佛堂。" };
-  const phone = str(body.phone, 30);
-  if (!/^[0-9\-+ ]{8,15}$/.test(phone)) return { ok: false, error: "請填寫正確的電話。" };
-  return { ok: true, value: { altar_name, full_name, gender, duty, shrine, phone } };
+  // 電話欄位已從畫面移除：有送才存，沒送就不動舊資料。
+  const value: Record<string, string> = { altar_name, full_name, gender, duty, shrine };
+  if (typeof body.phone === "string" && body.phone.trim()) value.phone = str(body.phone, 30);
+  return { ok: true, value };
 }
 
 serve(async (req) => {

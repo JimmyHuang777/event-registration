@@ -345,10 +345,6 @@ function renderDriverProfileForm() {
       <input type="text" id="dp-name" value="${p ? escapeHtml(p.contact_name || '') : escapeHtml(lineProfile.displayName || '')}">
     </div>
     <div class="field">
-      <label>聯絡電話 Phone</label>
-      <input type="text" id="dp-phone" placeholder="例：0912-345-678" value="${p ? escapeHtml(p.contact_phone || '') : ''}">
-    </div>
-    <div class="field">
       <label>車輛廠牌 Car brand</label>
       <input type="text" id="dp-brand" placeholder="例：Toyota Altis" value="${p ? escapeHtml(p.car_brand || '') : ''}">
     </div>
@@ -370,19 +366,18 @@ async function saveDriverProfileScreen() {
   const errEl = document.getElementById('dp-error');
   errEl.style.display = 'none';
   const name = document.getElementById('dp-name').value.trim();
-  const phone = document.getElementById('dp-phone').value.trim();
   const brand = document.getElementById('dp-brand').value.trim();
   const color = document.getElementById('dp-color').value.trim();
   const plate = document.getElementById('dp-plate').value.trim();
 
-  if (!name || !phone) { errEl.textContent = '請填寫司機姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+  if (!name) { errEl.textContent = '請填寫司機姓名。'; errEl.style.display = 'block'; return; }
   if (!brand || !plate) { errEl.textContent = '請填寫車輛廠牌與車牌號碼。'; errEl.style.display = 'block'; return; }
 
   const btn = document.getElementById('dp-save-btn');
   btn.disabled = true;
   try {
     const { driver_profile } = await callApi('save_driver_profile', {
-      contact_name: name, contact_phone: phone, car_brand: brand, car_color: color, car_plate: plate,
+      contact_name: name, car_brand: brand, car_color: color, car_plate: plate,
     });
     whoami.driver_profile = driver_profile;
     driverProfile = driver_profile;
@@ -488,7 +483,7 @@ function renderDriverBoard() {
   const el = document.getElementById('driver-content');
 
   const profileHTML = `<div class="car-profile-card">
-      👤 ${escapeHtml(driverProfile.contact_name)}　${escapeHtml(driverProfile.contact_phone)}<br>
+      👤 ${escapeHtml(driverProfile.contact_name)}<br>
       🚘 ${escapeHtml(driverProfile.car_brand)}${driverProfile.car_color ? '・' + escapeHtml(driverProfile.car_color) : ''}　車牌 ${escapeHtml(driverProfile.car_plate)}
       <div><button type="button" class="edit-link" id="edit-driver-profile-btn">編輯司機資料 Edit</button></div>
     </div>`;
@@ -563,7 +558,7 @@ function renderMyTrips() {
           const names = [p.name].concat(p.additional_passengers || []).join('、');
           return `
           <div class="passenger-row">
-            <span>👤 ${escapeHtml(names)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}${p.destination ? '　🎯' + escapeHtml(p.destination) : ''}</span>
+            <span>👤 ${escapeHtml(names)}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}${p.destination ? '　🎯' + escapeHtml(p.destination) : ''}</span>
           </div>`;
         }).join('')
       : '';
@@ -718,7 +713,7 @@ function renderPassengerBoard() {
 
     const details = [];
     if (isAssigned) {
-      details.push(`🚗 司機：${escapeHtml(r.trip.driver_name)}${r.trip.driver_phone ? '　' + escapeHtml(r.trip.driver_phone) : ''}`);
+      details.push(`🚗 司機：${escapeHtml(r.trip.driver_name)}`);
       if (r.trip.car_brand) details.push(`🚘 車輛：${escapeHtml(r.trip.car_brand)}${r.trip.car_color ? '・' + escapeHtml(r.trip.car_color) : ''}${r.trip.car_plate ? '　' + escapeHtml(r.trip.car_plate) : ''}`);
       const timeRange = [r.trip.available_time, r.trip.available_time_end].filter(Boolean).join(' - ');
       if (r.trip.available_date || timeRange) details.push(`🕒 時間：${escapeHtml([r.trip.available_date, timeRange].filter(Boolean).join(' '))}`);
@@ -777,10 +772,6 @@ function renderPassengerBoard() {
       <input type="text" id="ride-name" value="${escapeHtml(lineProfile.displayName || '')}">
     </div>
     <div class="field">
-      <label>聯絡電話 Phone</label>
-      <input type="text" id="ride-phone" placeholder="例：0912-345-678">
-    </div>
-    <div class="field">
       <label>需搭車地點 Pickup area <span class="hint">選填</span></label>
       <input type="text" id="ride-pickup-area" placeholder="例：台北車站附近">
     </div>
@@ -807,9 +798,8 @@ function renderPassengerBoard() {
     errEl.style.display = 'none';
 
     const name = document.getElementById('ride-name').value.trim();
-    const phone = document.getElementById('ride-phone').value.trim();
     const destination = document.getElementById('ride-destination').value.trim();
-    if (!name || !phone) { errEl.textContent = '請填寫姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+    if (!name) { errEl.textContent = '請填寫姓名。'; errEl.style.display = 'block'; return; }
     if (!destination) { errEl.textContent = '請填寫目的地。'; errEl.style.display = 'block'; return; }
 
     const additionalPassengers = Array.from(document.querySelectorAll('.additional-passenger-input'))
@@ -822,7 +812,6 @@ function renderPassengerBoard() {
       await callApi('create_ride_request', {
         event_id: currentEvent.id,
         passenger_name: name,
-        passenger_phone: phone,
         pickup_area: document.getElementById('ride-pickup-area').value.trim() || null,
         destination,
         additional_passengers: additionalPassengers,
@@ -897,7 +886,7 @@ function renderManagerTrips() {
       const names = [p.name].concat(p.additional_passengers || []).join('、');
       return `
       <div class="passenger-row">
-        <span>👤 ${escapeHtml(names)}　${escapeHtml(p.phone || '')}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}${p.destination ? '　🎯' + escapeHtml(p.destination) : ''}</span>
+        <span>👤 ${escapeHtml(names)}${p.pickup_area ? '　📍' + escapeHtml(p.pickup_area) : ''}${p.destination ? '　🎯' + escapeHtml(p.destination) : ''}</span>
         <button type="button" class="btn-text" data-unassign="${p.request_id}">取消配對</button>
       </div>`;
     }).join('');
@@ -908,7 +897,7 @@ function renderManagerTrips() {
     return `
       <div class="trip-card" data-trip-id="${t.id}">
         <div class="trip-card-top">
-          <span class="trip-card-name">${escapeHtml(t.driver_name)}${t.driver_phone ? '　' + escapeHtml(t.driver_phone) : ''}</span>
+          <span class="trip-card-name">${escapeHtml(t.driver_name)}</span>
           <span class="seats-badge ${full ? 'full' : ''}">${usedSeats} / ${t.seats_total} 位</span>
         </div>
         <div class="trip-card-meta">${escapeHtml(meta)}${carInfo ? '　🚘 ' + escapeHtml(carInfo) : ''}</div>
@@ -985,7 +974,7 @@ function renderManagerRequests() {
       <div class="trip-card-top">
         <span class="trip-card-name">${escapeHtml(names)}</span>
       </div>
-      <div class="trip-card-meta">${escapeHtml(r.phone || '')}${r.pickup_area ? '　📍' + escapeHtml(r.pickup_area) : ''}${r.destination ? '　🎯' + escapeHtml(r.destination) : ''}</div>
+      <div class="trip-card-meta">${r.pickup_area ? '📍' + escapeHtml(r.pickup_area) : ''}${r.destination ? '　🎯' + escapeHtml(r.destination) : ''}</div>
       <div class="trip-card-actions">
         <select class="request-select" data-assign="${r.id}">
           <option value="">指派給司機…</option>

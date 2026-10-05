@@ -499,7 +499,7 @@ serve(async (req) => {
           .eq("meeting_instance_id", instance_id);
         const userIds = [...new Set((attendance || []).map((a: any) => a.user_id))];
         const { data: users } = userIds.length
-          ? await supabase.from("users").select("id, display_name, phone").in("id", userIds)
+          ? await supabase.from("users").select("id, display_name").in("id", userIds)
           : { data: [] };
         const userById = new Map((users || []).map((u: any) => [u.id, u]));
 
@@ -522,7 +522,6 @@ serve(async (req) => {
             attendance_id: a.id,
             user_id: a.user_id,
             name: userById.get(a.user_id)?.display_name || "—",
-            phone: userById.get(a.user_id)?.phone || null,
             attended: a.attended,
             checked_in_at: a.checked_in_at,
           })),

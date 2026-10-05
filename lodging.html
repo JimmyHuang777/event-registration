@@ -337,10 +337,6 @@ function renderHostProfileForm() {
       <input type="text" id="hp-name" value="${p ? escapeHtml(p.contact_name || '') : escapeHtml(lineProfile.displayName || '')}">
     </div>
     <div class="field">
-      <label>聯絡電話 Phone</label>
-      <input type="text" id="hp-phone" placeholder="例：0912-345-678" value="${p ? escapeHtml(p.contact_phone || '') : ''}">
-    </div>
-    <div class="field">
       <label>房源名稱 Property name</label>
       <input type="text" id="hp-property-name" placeholder="例：王公館" value="${p ? escapeHtml(p.property_name || '') : ''}">
     </div>
@@ -362,19 +358,18 @@ async function saveHostProfileScreen() {
   const errEl = document.getElementById('hp-error');
   errEl.style.display = 'none';
   const name = document.getElementById('hp-name').value.trim();
-  const phone = document.getElementById('hp-phone').value.trim();
   const propertyName = document.getElementById('hp-property-name').value.trim();
   const propertyType = document.getElementById('hp-property-type').value.trim();
   const propertyAddress = document.getElementById('hp-property-address').value.trim();
 
-  if (!name || !phone) { errEl.textContent = '請填寫房東姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+  if (!name) { errEl.textContent = '請填寫房東姓名。'; errEl.style.display = 'block'; return; }
   if (!propertyName || !propertyAddress) { errEl.textContent = '請填寫房源名稱與地址。'; errEl.style.display = 'block'; return; }
 
   const btn = document.getElementById('hp-save-btn');
   btn.disabled = true;
   try {
     const { host_profile } = await callApi('save_host_profile', {
-      contact_name: name, contact_phone: phone,
+      contact_name: name,
       property_name: propertyName, property_type: propertyType, property_address: propertyAddress,
     });
     whoami.host_profile = host_profile;
@@ -480,7 +475,7 @@ function renderHostBoard() {
   const el = document.getElementById('host-content');
 
   const profileHTML = `<div class="car-profile-card">
-      👤 ${escapeHtml(hostProfile.contact_name)}　${escapeHtml(hostProfile.contact_phone)}<br>
+      👤 ${escapeHtml(hostProfile.contact_name)}<br>
       🏠 ${escapeHtml(hostProfile.property_name)}${hostProfile.property_type ? '・' + escapeHtml(hostProfile.property_type) : ''}<br>
       📍 ${escapeHtml(hostProfile.property_address)}
       <div><button type="button" class="edit-link" id="edit-host-profile-btn">編輯房東資料 Edit</button></div>
@@ -552,7 +547,7 @@ function renderMyOffers() {
           const names = [g.name].concat(g.additional_guests || []).join('、');
           return `
           <div class="passenger-row">
-            <span>👤 ${escapeHtml(names)}　${escapeHtml(g.phone || '')}</span>
+            <span>👤 ${escapeHtml(names)}</span>
           </div>`;
         }).join('')
       : '';
@@ -660,7 +655,7 @@ function renderGuestBoard() {
 
     const details = [];
     if (isAssigned) {
-      details.push(`🏠 房東：${escapeHtml(r.offer.host_name)}${r.offer.host_phone ? '　' + escapeHtml(r.offer.host_phone) : ''}`);
+      details.push(`🏠 房東：${escapeHtml(r.offer.host_name)}`);
       if (r.offer.property_name) details.push(`🏘️ 房源：${escapeHtml(r.offer.property_name)}${r.offer.property_type ? '・' + escapeHtml(r.offer.property_type) : ''}`);
       if (r.offer.property_address) details.push(`📍 地址：${escapeHtml(r.offer.property_address)}`);
       const timeRange = [r.offer.check_in_time, r.offer.check_out_time].filter(Boolean).join(' - ');
@@ -717,10 +712,6 @@ function renderGuestBoard() {
       <input type="text" id="lodge-name" value="${escapeHtml(lineProfile.displayName || '')}">
     </div>
     <div class="field">
-      <label>聯絡電話 Phone</label>
-      <input type="text" id="lodge-phone" placeholder="例：0912-345-678">
-    </div>
-    <div class="field">
       <label>隨行房客 Additional guests <span class="hint">選填，只需填寫姓名</span></label>
       <div id="additional-guest-list"></div>
       <button type="button" class="add-btn" id="add-guest-btn" style="margin-bottom:0;">＋ 新增隨行房客 Add guest</button>
@@ -739,8 +730,7 @@ function renderGuestBoard() {
     errEl.style.display = 'none';
 
     const name = document.getElementById('lodge-name').value.trim();
-    const phone = document.getElementById('lodge-phone').value.trim();
-    if (!name || !phone) { errEl.textContent = '請填寫姓名與聯絡電話。'; errEl.style.display = 'block'; return; }
+    if (!name) { errEl.textContent = '請填寫姓名。'; errEl.style.display = 'block'; return; }
 
     const additionalGuests = Array.from(document.querySelectorAll('.additional-passenger-input'))
       .map(input => input.value.trim())
@@ -752,7 +742,6 @@ function renderGuestBoard() {
       await callApi('create_lodging_request', {
         event_id: currentEvent.id,
         guest_name: name,
-        guest_phone: phone,
         additional_guests: additionalGuests,
         notes: document.getElementById('lodge-notes').value.trim() || null,
       });
@@ -825,7 +814,7 @@ function renderManagerOffers() {
       const names = [g.name].concat(g.additional_guests || []).join('、');
       return `
       <div class="passenger-row">
-        <span>👤 ${escapeHtml(names)}　${escapeHtml(g.phone || '')}</span>
+        <span>👤 ${escapeHtml(names)}</span>
         <button type="button" class="btn-text" data-unassign="${g.request_id}">取消配對</button>
       </div>`;
     }).join('');
@@ -836,7 +825,7 @@ function renderManagerOffers() {
     return `
       <div class="trip-card" data-offer-id="${o.id}">
         <div class="trip-card-top">
-          <span class="trip-card-name">${escapeHtml(o.host_name)}${o.host_phone ? '　' + escapeHtml(o.host_phone) : ''}</span>
+          <span class="trip-card-name">${escapeHtml(o.host_name)}</span>
           <span class="seats-badge ${full ? 'full' : ''}">${usedCapacity} / ${o.capacity_total} 位</span>
         </div>
         <div class="trip-card-meta">${escapeHtml(meta)}${propertyInfo ? '　🏠 ' + escapeHtml(propertyInfo) : ''}</div>
@@ -913,7 +902,6 @@ function renderManagerRequests() {
       <div class="trip-card-top">
         <span class="trip-card-name">${escapeHtml(names)}</span>
       </div>
-      <div class="trip-card-meta">${escapeHtml(r.phone || '')}</div>
       <div class="trip-card-actions">
         <select class="request-select" data-assign="${r.id}">
           <option value="">指派給房東…</option>
