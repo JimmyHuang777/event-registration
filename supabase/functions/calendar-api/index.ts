@@ -96,12 +96,12 @@ serve(async (req) => {
     // 1) plain calendar entries (overlapping the month)
     const { data: entries } = await supabase
       .from("calendar_entries")
-      .select("id, entry_date, end_date, title, time_text, place, notes")
+      .select("id, entry_date, end_date, title, time_text, place, notes, category, lunar_text, kowtow")
       .lte("entry_date", last)
       .or(`end_date.gte.${first},and(end_date.is.null,entry_date.gte.${first})`)
       .order("entry_date", { ascending: true });
     (entries || []).forEach((e: any) =>
-      items.push({ kind: "entry", id: e.id, date: e.entry_date, end_date: e.end_date, title: e.title, time: e.time_text, place: e.place, notes: e.notes }));
+      items.push({ kind: e.category === "saint" ? "saint" : "entry", id: e.id, date: e.entry_date, end_date: e.end_date, title: e.title, time: e.time_text, place: e.place, notes: e.notes, lunar: e.lunar_text, kowtow: e.kowtow }));
 
     // 2) events dated in the month
     const { data: evs } = await supabase

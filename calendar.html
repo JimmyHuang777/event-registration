@@ -105,17 +105,20 @@
   .cal-chip { display:block; font-size:10px; line-height:1.25; border-radius:4px; padding:1px 3px; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#fff; background:#06C755; }
   .cal-chip.event { background:#F97316; }
   .cal-chip.task { background:#7C3AED; }
+  .cal-chip.saint { background:#B45309; }
   .cal-more { font-size:10px; color:var(--ink-soft); }
   .cal-list { padding:4px 16px 32px; }
   .cal-list h3 { font-size:14px; margin:14px 2px 8px; }
   .cal-item { display:block; text-decoration:none; color:inherit; background:var(--paper); border:1px solid var(--line); border-left:5px solid #06C755; border-radius:10px; padding:10px 12px; margin-bottom:8px; }
   .cal-item.event { border-left-color:#F97316; }
   .cal-item.task { border-left-color:#7C3AED; }
+  .cal-item.saint { border-left-color:#B45309; }
   .cal-item .t { font-size:15px; font-weight:700; }
   .cal-item .s { font-size:12.5px; color:var(--ink-soft); margin-top:3px; line-height:1.45; }
   .cal-kind { font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; margin-right:6px; background:#E7F8EE; color:#067A37; }
   .cal-kind.event { background:#FFEDD5; color:#C2410C; }
   .cal-kind.task { background:#EDE9FE; color:#6D28D9; }
+  .cal-kind.saint { background:#FEF3C7; color:#92400E; }
 </style>
 </head>
 <body>
@@ -147,6 +150,7 @@
     </div>
     <div class="cal-filter">
       <label><input type="checkbox" id="cal-f-entry" checked> <span class="dot" style="background:#06C755;"></span>行事曆</label>
+      <label><input type="checkbox" id="cal-f-saint" checked> <span class="dot" style="background:#B45309;"></span>仙佛紀念日</label>
       <label><input type="checkbox" id="cal-f-event" checked> <span class="dot" style="background:#F97316;"></span>報名</label>
       <label><input type="checkbox" id="cal-f-task"> <span class="dot" style="background:#7C3AED;"></span>工作</label>
     </div>
@@ -216,9 +220,9 @@ function toast(msg) {
 
 /* ---------- Calendar ---------- */
 
-const KIND_LABEL = { entry: '行事曆', event: '報名', task: '工作' };
+const KIND_LABEL = { entry: '行事曆', saint: '仙佛紀念日', event: '報名', task: '工作' };
 const FILTER_KEY = 'calendarFilters';
-let calFilters = { entry: true, event: true, task: false };
+let calFilters = { entry: true, saint: true, event: true, task: false };
 try { Object.assign(calFilters, JSON.parse(localStorage.getItem(FILTER_KEY) || '{}')); } catch (e) {}
 let calYear, calMonth, calItems = [], calSelected = null;
 
@@ -256,7 +260,7 @@ function renderCalendar() {
 
 function itemHTML(it) {
   const range = it.end_date && it.end_date !== it.date ? it.date.slice(5).replace('-', '/') + ' – ' + it.end_date.slice(5).replace('-', '/') : '';
-  const sub = [range, it.time, it.place && ('📍 ' + it.place), it.notes].filter(Boolean).map(escapeHtml).join('　');
+  const sub = (it.kind === 'saint' ? [range, it.lunar && ('農曆 ' + it.lunar), it.kowtow] : [range, it.time, it.place && ('📍 ' + it.place), it.notes]).filter(Boolean).map(escapeHtml).join('　');
   const tag = it.kind === 'event' ? 'a' : (it.kind === 'task' ? 'a' : 'div');
   const href = it.kind === 'event' ? ' href="index.html?event=' + encodeURIComponent(it.slug) + '"' : (it.kind === 'task' ? (it.once ? ' href="tasks-once.html"' : ' href="tasks.html"') : '');
   return '<' + tag + href + ' class="cal-item ' + it.kind + '"><div class="t"><span class="cal-kind ' + it.kind + '">' + KIND_LABEL[it.kind] + '</span>' + escapeHtml(it.title) + '</div>' +
@@ -296,9 +300,9 @@ async function loadMonth() {
 }
 
 function syncFilterBoxes() {
-  ['entry', 'event', 'task'].forEach(k => { document.getElementById('cal-f-' + k).checked = !!calFilters[k]; });
+  ['entry', 'saint', 'event', 'task'].forEach(k => { document.getElementById('cal-f-' + k).checked = !!calFilters[k]; });
 }
-['entry', 'event', 'task'].forEach(k => document.getElementById('cal-f-' + k).addEventListener('change', (e) => {
+['entry', 'saint', 'event', 'task'].forEach(k => document.getElementById('cal-f-' + k).addEventListener('change', (e) => {
   calFilters[k] = e.target.checked;
   try { localStorage.setItem(FILTER_KEY, JSON.stringify(calFilters)); } catch (err) {}
   if (k === 'task' && e.target.checked) loadMonth(); else renderCalendar();
