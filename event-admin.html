@@ -479,6 +479,8 @@ function addFieldBuilderRow(prefill) {
   wrap.className = 'field-builder-item';
   wrap.dataset.rowId = id;
   wrap.dataset.required = isRequired ? '1' : '0';
+  // Keep an existing field's id stable across renames so saved answers stay attached to it.
+  if (prefill && prefill.id) wrap.dataset.fieldId = prefill.id;
 
   wrap.innerHTML = `
     <div class="fb-row1">
@@ -542,12 +544,21 @@ document.getElementById('add-field-btn').addEventListener('click', () => addFiel
 
 function collectFormSchema() {
   const formSchema = [];
+  // ids of fields that already exist are reserved first, so a new field with a
+  // similar label can't steal them.
+  const usedIds = new Set();
+  document.querySelectorAll('#field-builder-list .field-builder-item').forEach(row => { if (row.dataset.fieldId) usedIds.add(row.dataset.fieldId); });
   document.querySelectorAll('#field-builder-list .field-builder-item').forEach(row => {
     const label = row.querySelector('.fb-label').value.trim();
     if (!label) return;
     const type = row.querySelector('.fb-type').value;
     const required = row.dataset.required === '1';
-    const fieldId = label.toLowerCase().replace(/[^\w一-鿿]+/g, '_').replace(/^_+|_+$/g, '') || ('field_' + formSchema.length);
+    let fieldId = row.dataset.fieldId || label.toLowerCase().replace(/[^\w一-鿿]+/g, '_').replace(/^_+|_+$/g, '') || ('field_' + formSchema.length);
+    if (!row.dataset.fieldId) {
+      const base = fieldId; let n = 2;
+      while (usedIds.has(fieldId)) fieldId = base + '_' + (n++);
+      usedIds.add(fieldId);
+    }
     const field = { id: fieldId, label, type, required };
     if (type === 'select') {
       const opts = row.querySelector('.fb-options').value.split(',').map(s => s.trim()).filter(Boolean);
