@@ -455,7 +455,7 @@ document.getElementById('new-event-btn').addEventListener('click', () => openFor
 /* ---------- Custom field builder (same shape as the dashboard's) ---------- */
 
 // 火車車次（瑞穗站抵達時間）— 依抵達時間排序；選項文字即為存入報名資料的值
-const TRAIN_OPTIONS = [
+let TRAIN_OPTIONS = [
   '306 自強 (3000) · 07:15 抵達瑞穗',
   '402 普悠瑪 · 08:58 抵達瑞穗',
   '406 自強 (3000) · 09:51 抵達瑞穗',
@@ -471,6 +471,17 @@ const TRAIN_OPTIONS = [
   '438 自強 (3000) · 21:35 抵達瑞穗',
   '448 普悠瑪 · 23:12 抵達瑞穗'
 ];
+
+const trainLabel = (t) => `${t.train_no} ${t.train_type} · ${t.arrive_time} 抵達瑞穗`;
+// Loads the active timetable (sorted by arrival); keeps the built-in list if the table isn't there yet.
+async function loadTrainOptions() {
+  try {
+    const { trains } = await callApi('list_trains');
+    if (Array.isArray(trains)) TRAIN_OPTIONS = trains.map(trainLabel);
+  } catch (e) { /* keep built-in list */ }
+  return TRAIN_OPTIONS;
+}
+
 
 function addFieldBuilderRow(prefill) {
   const id = 'fb-' + (fieldBuilderCount++);
@@ -618,6 +629,7 @@ const DEFAULT_PERSONAL_FIELDS = [
 
 function openForm(ev) {
   editingId = ev ? ev.id : null;
+  loadTrainOptions();
   document.getElementById('form-title').textContent = ev ? '編輯活動 Edit Event' : '新增活動 New Event';
   document.getElementById('form-error').style.display = 'none';
   document.getElementById('form-warning').style.display = 'none';
