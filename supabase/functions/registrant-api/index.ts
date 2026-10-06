@@ -137,22 +137,23 @@ serve(async (req) => {
 
         if (userErr) return json({ error: userErr.message }, 400);
 
-        // The same person (by name) can't be registered twice by the same submitter. (A DB trigger
-        // enforces this too; this check just gives a friendly message.)
+        // The same person (by name) can't be registered twice by the same
+        // submitter — to change someone, use 編輯 (update_attendee). Adding
+        // OTHER people to an existing registration is allowed.
         {
           const keyOf = (n: unknown) => String(n || "").trim().toLowerCase();
           const seen = new Set<string>();
           for (const a of attendees) {
             const k = keyOf(a.name);
-            if (seen.has(k)) return json({ error: "「" + String(a.name).trim() + "」在這次送出中重複了；本活動不開放重複報名。" }, 409);
+            if (seen.has(k)) return json({ error: "「" + String(a.name).trim() + "」在這次送出中重複了。" }, 409);
             seen.add(k);
           }
           const { data: mine } = await supabase
-            .from("registrations").select("attendee_name, attendee_phone")
+            .from("registrations").select("attendee_name")
             .eq("event_id", event_id).eq("user_id", userRow.id).neq("status", "cancelled");
           const had = new Set((mine || []).map((r: any) => keyOf(r.attendee_name)));
           const dup = attendees.find((a: any) => had.has(keyOf(a.name)));
-          if (dup) return json({ error: "「" + String(dup.name).trim() + "」已經用相同的姓名報名過了；本活動不開放重複報名。" }, 409);
+          if (dup) return json({ error: "「" + String(dup.name).trim() + "」已經報名過本活動了。如需修改資料，請使用「編輯」。", code: "already_registered" }, 409);
         }
 
         const rowsToInsert = attendees.map((a: any) => ({
