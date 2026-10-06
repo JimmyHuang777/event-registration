@@ -24,6 +24,12 @@
 //   toggle_event_active — flip an event's is_active flag.
 //   delete_event       — delete an event.
 //
+// Altar team leaders (組長): a leader of a team listed in
+// altar_manager_teams (SQL 53; default 佛堂/庶務/住壇) automatically
+// manages the events whose 所屬壇 is that altar — edit the event, but
+// never create, activate/deactivate or delete (those stay with
+// event_admins). `whoami` reports is_global_admin / managed_altar_ids.
+//
 // Carpool (共乘) matching has moved to its own dedicated carpool-api
 // Edge Function, gated by the separate car_manager_admins list rather
 // than event_admins — this function no longer handles it.
@@ -68,6 +74,10 @@ async function verifyLineToken(idToken: string) {
   if (!data.sub) return null;
   return data as { sub: string; name?: string; picture?: string };
 }
+
+// Teams whose leaders manage their altar's events when altar_manager_teams
+// (SQL 53) isn't there yet.
+const DEFAULT_MANAGER_TEAMS = ["shrine", "general", "resident"];
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
@@ -134,10 +144,25 @@ serve(async (req) => {
       .select("user_id")
       .eq("user_id", existingUser.id)
       .maybeSingle();
-    const isAdmin = !!adminRow;
+    const isGlobalAdmin = !!adminRow;
+
+    // Altars this person leads (in a team that grants event management).
+    let managedAltarIds: string[] = [];
+    {
+      let teams = DEFAULT_MANAGER_TEAMS;
+      const { data: tRows, error: tErr } = await supabase.from("altar_manager_teams").select("team");
+      if (!tErr && tRows) teams = tRows.map((r: any) => r.team);
+      if (teams.length > 0) {
+        const { data: led } = await supabase
+          .from("altar_team_members").select("altar_id")
+          .eq("user_id", existingUser.id).eq("role", "leader").in("team", teams);
+        managedAltarIds = [...new Set((led || []).map((r: any) => r.altar_id))] as string[];
+      }
+    }
+    const isAdmin = isGlobalAdmin || managedAltarIds.length > 0;
 
     if (action === "whoami") {
-      return json({ user: existingUser, is_admin: isAdmin });
+      return json({ user: existingUser, is_admin: isAdmin, is_global_admin: isGlobalAdmin, managed_altar_ids: managedAltarIds });
     }
 
     if (!isAdmin) {
@@ -147,10 +172,12 @@ serve(async (req) => {
     switch (action) {
       // ---- List every event, with its group_ids ----
       case "list_events": {
-        const { data: events, error } = await supabase
+        let evQuery = supabase
           .from("events")
-          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging, allow_duplicate_registration")
+          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging")
           .order("event_date", { ascending: false });
+        if (!isGlobalAdmin) evQuery = evQuery.in("altar_id", managedAltarIds);
+        const { data: events, error } = await evQuery;
         if (error) return json({ error: error.message }, 400);
 
         const eventIds = (events || []).map((e: any) => e.id);
@@ -163,6 +190,15 @@ serve(async (req) => {
         }
         const withGroups = (events || []).map((e: any) => ({ ...e, group_ids: groupsByEvent[e.id] || [] }));
         return json({ events: withGroups });
+      }
+
+      // ---- Active train timetable (瑞穗站) for the 火車車次 field ----
+      case "list_trains": {
+        const { data, error } = await supabase
+          .from("train_schedule").select("train_no, train_type, arrive_time")
+          .eq("is_active", true).order("arrive_time", { ascending: true });
+        if (error) return json({ error: error.message }, 400);
+        return json({ trains: data || [] });
       }
 
       // ---- All altars (id, name, parent) for the 所屬壇 picker ----
@@ -182,18 +218,29 @@ serve(async (req) => {
       // ---- Create or update an event ----
       case "save_event": {
         const editingId = body.editing_id || null;
+        if (!isGlobalAdmin) {
+          // Altar leaders may only edit events of their own altar.
+          if (!editingId) return json({ error: "您只能編輯所屬壇的活動，無法新增活動。" }, 403);
+          const { data: own } = await supabase.from("events").select("altar_id").eq("id", editingId).maybeSingle();
+          if (!own || !own.altar_id || !managedAltarIds.includes(own.altar_id)) {
+            return json({ error: "您沒有管理此活動的權限。" }, 403);
+          }
+          // Leaders can't move the event to another altar or feature it.
+          delete body.altar_id;
+          delete body.is_featured;
+        }
         const name = (body.name || "").trim();
         const description = (body.description || "").trim() || null;
         const eventDate = body.event_date || null;
         const location = (body.location || "").trim() || null;
         const formSchema = Array.isArray(body.form_schema) ? body.form_schema : [];
         const isFeatured = !!body.is_featured;
+        const featuredPatch = "is_featured" in body ? { is_featured: isFeatured } : {};
         // Optional extras: only touched when the caller sends them.
         const extras: Record<string, unknown> = {};
         if ("altar_id" in body) extras.altar_id = body.altar_id || null;
         if ("offers_transport" in body) extras.offers_transport = !!body.offers_transport;
         if ("offers_lodging" in body) extras.offers_lodging = !!body.offers_lodging;
-        if ("allow_duplicate_registration" in body) extras.allow_duplicate_registration = !!body.allow_duplicate_registration;
         const groupIds: string[] = Array.isArray(body.group_ids) ? body.group_ids : [];
 
         if (!name) return json({ error: "請填寫活動名稱。" }, 400);
@@ -201,7 +248,7 @@ serve(async (req) => {
         if (editingId) {
           const { error: updateErr } = await supabase
             .from("events")
-            .update({ name, description, event_date: eventDate, location, form_schema: formSchema, is_featured: isFeatured, ...extras })
+            .update({ name, description, event_date: eventDate, location, form_schema: formSchema, ...featuredPatch, ...extras })
             .eq("id", editingId);
           if (updateErr) return json({ error: updateErr.message }, 400);
           await syncEventGroups(editingId, groupIds);
@@ -226,6 +273,7 @@ serve(async (req) => {
 
       // ---- Toggle active/inactive ----
       case "toggle_event_active": {
+        if (!isGlobalAdmin) return json({ error: "只有活動管理員可以啟用或停用活動。" }, 403);
         const { id, is_active } = body;
         if (!id) return json({ error: "Missing id." }, 400);
         const { error } = await supabase.from("events").update({ is_active: !!is_active }).eq("id", id);
@@ -235,6 +283,7 @@ serve(async (req) => {
 
       // ---- Delete an event ----
       case "delete_event": {
+        if (!isGlobalAdmin) return json({ error: "只有活動管理員可以刪除活動。" }, 403);
         const { id } = body;
         if (!id) return json({ error: "Missing id." }, 400);
         const { error } = await supabase.from("events").delete().eq("id", id);

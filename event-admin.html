@@ -168,6 +168,7 @@
       <span class="name" id="profile-name">—</span>
     </div>
     <div class="content">
+      <div id="leader-note" style="display:none; margin-bottom:14px; padding:10px 12px; background:#FFF7E6; border-radius:10px; font-size:13px; line-height:1.6; color:#7A5200;">您是壇組長，可編輯所屬壇的活動；新增、啟用／停用與刪除活動需由活動管理員操作。</div>
       <button type="button" class="btn-primary new-event-btn" id="new-event-btn">＋ 新增活動 New Event</button>
       <div id="event-list"></div>
     </div>
@@ -216,15 +217,7 @@
         </label>
       </div>
 
-      <div class="field">
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-          <input type="checkbox" id="f-allow-dup" style="width:18px; height:18px;">
-          <span>🔁 允許同一位用戶重複報名</span>
-        </label>
-        <p class="hint">預設不允許。勾選後，同一人可以用相同的姓名與電話一再送出報名</p>
-      </div>
-
-      <div class="field">
+            <div class="field">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" id="f-featured" style="width:18px; height:18px;">
           <span>⭐ 顯示在「群聖家園」最上方的「近期重要班程」</span>
@@ -360,6 +353,12 @@ async function initLiff() {
       showScreen('noAccess');
       return;
     }
+    // 壇組長（非全域活動管理員）：只能編輯所屬壇的活動
+    isGlobalAdmin = !!who.is_global_admin;
+    if (!isGlobalAdmin) {
+      document.getElementById('new-event-btn').style.display = 'none';
+      document.getElementById('leader-note').style.display = 'block';
+    }
 
     await loadAll();
     showScreen('main');
@@ -379,6 +378,8 @@ document.getElementById('relogin-btn').addEventListener('click', () => {
   try { liff.logout(); } catch (e) {}
   window.location.reload();
 });
+
+let isGlobalAdmin = true;
 
 async function loadAll() {
   const [eventsRes, groupsRes] = await Promise.all([
@@ -416,7 +417,7 @@ function isValidLiffId(liffId) {
 function renderEventList() {
   const listEl = document.getElementById('event-list');
   if (allEvents.length === 0) {
-    listEl.innerHTML = '<div class="empty-note">尚無活動。</div>';
+    listEl.innerHTML = '<div class="empty-note">' + (isGlobalAdmin ? '尚無活動。' : '您所屬壇目前沒有活動。') + '</div>';
     return;
   }
   listEl.innerHTML = allEvents.map(ev => `
@@ -428,15 +429,16 @@ function renderEventList() {
       <div class="event-meta">${ev.event_date || '日期未定'}${ev.location ? '・📍 ' + escapeHtml(ev.location) : ''}</div>
       <div class="event-actions">
         <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
-        <button type="button" class="btn-text" data-action="toggle">${ev.is_active ? '停用' : '啟用'}</button>
-        <button type="button" class="btn-text danger" data-action="delete">刪除 Delete</button>
+        ${isGlobalAdmin ? `<button type="button" class="btn-text" data-action="toggle">${ev.is_active ? '停用' : '啟用'}</button>
+        <button type="button" class="btn-text danger" data-action="delete">刪除 Delete</button>` : ''}
       </div>
     </div>`).join('');
 
   listEl.querySelectorAll('.event-card').forEach(card => {
     const id = card.dataset.id;
     card.querySelector('[data-action="edit"]').addEventListener('click', () => openForm(allEvents.find(e => e.id === id)));
-    card.querySelector('[data-action="toggle"]').addEventListener('click', async () => {
+    const toggleBtn = card.querySelector('[data-action="toggle"]');
+    if (toggleBtn) toggleBtn.addEventListener('click', async () => {
       const ev = allEvents.find(e => e.id === id);
       try {
         await callApi('toggle_event_active', { id, is_active: !ev.is_active });
@@ -445,7 +447,8 @@ function renderEventList() {
         alert('更新失敗：' + err.message);
       }
     });
-    card.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+    const deleteBtn = card.querySelector('[data-action="delete"]');
+    if (deleteBtn) deleteBtn.addEventListener('click', async () => {
       const ev = allEvents.find(e => e.id === id);
       if (!confirm(`確定要刪除「${ev ? ev.name : ''}」嗎？此動作無法復原，報名資料也會一併刪除。`)) return;
       try {
@@ -463,7 +466,7 @@ document.getElementById('new-event-btn').addEventListener('click', () => openFor
 /* ---------- Custom field builder (same shape as the dashboard's) ---------- */
 
 // 火車車次（瑞穗站抵達時間）— 依抵達時間排序；選項文字即為存入報名資料的值
-const TRAIN_OPTIONS = [
+let TRAIN_OPTIONS = [
   '306 自強 (3000) · 07:15 抵達瑞穗',
   '402 普悠瑪 · 08:58 抵達瑞穗',
   '406 自強 (3000) · 09:51 抵達瑞穗',
@@ -480,6 +483,17 @@ const TRAIN_OPTIONS = [
   '448 普悠瑪 · 23:12 抵達瑞穗'
 ];
 
+const trainLabel = (t) => `${t.train_no} ${t.train_type} · ${t.arrive_time} 抵達瑞穗`;
+// Loads the active timetable (sorted by arrival); keeps the built-in list if the table isn't there yet.
+async function loadTrainOptions() {
+  try {
+    const { trains } = await callApi('list_trains');
+    if (Array.isArray(trains)) TRAIN_OPTIONS = trains.map(trainLabel);
+  } catch (e) { /* keep built-in list */ }
+  return TRAIN_OPTIONS;
+}
+
+
 function addFieldBuilderRow(prefill) {
   const id = 'fb-' + (fieldBuilderCount++);
   const isRequired = !!(prefill && prefill.required);
@@ -487,6 +501,8 @@ function addFieldBuilderRow(prefill) {
   wrap.className = 'field-builder-item';
   wrap.dataset.rowId = id;
   wrap.dataset.required = isRequired ? '1' : '0';
+  // Keep an existing field's id stable across renames so saved answers stay attached to it.
+  if (prefill && prefill.id) wrap.dataset.fieldId = prefill.id;
 
   wrap.innerHTML = `
     <div class="fb-row1">
@@ -550,12 +566,21 @@ document.getElementById('add-field-btn').addEventListener('click', () => addFiel
 
 function collectFormSchema() {
   const formSchema = [];
+  // ids of fields that already exist are reserved first, so a new field with a
+  // similar label can't steal them.
+  const usedIds = new Set();
+  document.querySelectorAll('#field-builder-list .field-builder-item').forEach(row => { if (row.dataset.fieldId) usedIds.add(row.dataset.fieldId); });
   document.querySelectorAll('#field-builder-list .field-builder-item').forEach(row => {
     const label = row.querySelector('.fb-label').value.trim();
     if (!label) return;
     const type = row.querySelector('.fb-type').value;
     const required = row.dataset.required === '1';
-    const fieldId = label.toLowerCase().replace(/[^\w一-鿿]+/g, '_').replace(/^_+|_+$/g, '') || ('field_' + formSchema.length);
+    let fieldId = row.dataset.fieldId || label.toLowerCase().replace(/[^\w一-鿿]+/g, '_').replace(/^_+|_+$/g, '') || ('field_' + formSchema.length);
+    if (!row.dataset.fieldId) {
+      const base = fieldId; let n = 2;
+      while (usedIds.has(fieldId)) fieldId = base + '_' + (n++);
+      usedIds.add(fieldId);
+    }
     const field = { id: fieldId, label, type, required };
     if (type === 'select') {
       const opts = row.querySelector('.fb-options').value.split(',').map(s => s.trim()).filter(Boolean);
@@ -615,6 +640,7 @@ const DEFAULT_PERSONAL_FIELDS = [
 
 function openForm(ev) {
   editingId = ev ? ev.id : null;
+  loadTrainOptions();
   document.getElementById('form-title').textContent = ev ? '編輯活動 Edit Event' : '新增活動 New Event';
   document.getElementById('form-error').style.display = 'none';
   document.getElementById('form-warning').style.display = 'none';
@@ -624,7 +650,6 @@ function openForm(ev) {
   document.getElementById('f-date').value = ev ? (ev.event_date || '') : '';
   document.getElementById('f-location').value = ev ? (ev.location || '') : '';
   document.getElementById('f-featured').checked = !!(ev && ev.is_featured);
-  document.getElementById('f-allow-dup').checked = !!(ev && ev.allow_duplicate_registration);
   document.getElementById('f-transport').checked = !!(ev && ev.offers_transport);
   document.getElementById('f-lodging').checked = !!(ev && ev.offers_lodging);
   fillAltarSelect(ev ? (ev.altar_id || '') : '');
@@ -638,6 +663,13 @@ function openForm(ev) {
 
   const checkedGroupIds = new Set(ev ? (ev.group_ids || []) : []);
   renderGroupChips(checkedGroupIds);
+
+  if (!isGlobalAdmin) {
+    // 組長不能把活動改到別的壇，也不能設為精選
+    const altarSel = document.getElementById('f-altar');
+    altarSel.disabled = true;
+    document.getElementById('f-featured').disabled = true;
+  }
 
   showScreen('form');
 }
@@ -664,10 +696,9 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     event_date: document.getElementById('f-date').value || null,
     location: document.getElementById('f-location').value.trim() || null,
     is_featured: document.getElementById('f-featured').checked,
-    allow_duplicate_registration: document.getElementById('f-allow-dup').checked,
     offers_transport: document.getElementById('f-transport').checked,
     offers_lodging: document.getElementById('f-lodging').checked,
-    altar_id: altarValueForSave(),
+    altar_id: isGlobalAdmin ? altarValueForSave() : undefined,
     form_schema: collectFormSchema(),
     group_ids: [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value),
   };
