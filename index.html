@@ -404,7 +404,7 @@ async function callApi(action, extra = {}) {
     body: JSON.stringify({ action, idToken, ...extra }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  if (!res.ok) { const err = new Error(data.error || '發生錯誤 Something went wrong'); err.code = data.code; throw err; }
   return data;
 }
 
@@ -972,12 +972,27 @@ document.getElementById('reg-form').addEventListener('submit', async (e) => {
   submitBtn.textContent = '送出中…';
 
   try {
-    const { registrations } = await callApi('register_for_event', {
+    const send = (overwrite) => callApi('register_for_event', {
       event_id: currentEventId,
       display_name: lineProfile.displayName,
       email: document.getElementById('input-email').value.trim() || null,
       attendees,
+      overwrite: !!overwrite,
     });
+    let result;
+    try {
+      result = await send(false);
+    } catch (err) {
+      // Someone else already registered the same name → confirm overwrite.
+      if (err.code !== 'duplicate_other') throw err;
+      if (!confirm(err.message + '\n\n按「確定」＝覆蓋原本的報名（原報名會改由您管理）\n按「取消」＝不送出')) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '送出報名 Submit';
+        return;
+      }
+      result = await send(true);
+    }
+    const registrations = result.registrations;
 
     existingRegistrations = existingRegistrations.concat(registrations || []);
 

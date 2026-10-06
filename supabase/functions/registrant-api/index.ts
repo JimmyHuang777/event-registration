@@ -156,24 +156,67 @@ serve(async (req) => {
           if (dup) return json({ error: "「" + String(dup.name).trim() + "」已經報名過本活動了。如需修改資料，請使用「編輯」。", code: "already_registered" }, 409);
         }
 
-        const rowsToInsert = attendees.map((a: any) => ({
-          user_id: userRow.id,
-          event_id,
-          attendee_name: String(a.name).trim(),
-          attendee_phone: a.phone || "",
-          notes: a.notes || null,
-          extra_data: a.extra_data || {},
-          status: "pending",
-        }));
+        // One registration per person (name) per event, across ALL submitters.
+        // If someone ELSE already registered the same name, ask the client to
+        // confirm; with overwrite=true the old row is replaced by this data
+        // (and now belongs to this submitter), keeping the name unique.
+        const { data: others } = await supabase
+          .from("registrations").select("id, attendee_name, status, user_id")
+          .eq("event_id", event_id).neq("status", "cancelled");
+        const otherByName = new Map<string, any>();
+        (others || []).forEach((r: any) => otherByName.set(String(r.attendee_name || "").trim().toLowerCase(), r));
+        const clash = attendees.filter((a: any) => otherByName.has(String(a.name).trim().toLowerCase()));
+        if (clash.length > 0 && body.overwrite !== true) {
+          return json({
+            error: "「" + clash.map((a: any) => String(a.name).trim()).join("、") + "」已經有人報名過本活動了。是否用這次填寫的資料覆蓋原本的報名？",
+            code: "duplicate_other",
+            names: clash.map((a: any) => String(a.name).trim()),
+          }, 409);
+        }
 
-        const { data: regRows, error: regErr } = await supabase
-          .from("registrations")
-          .insert(rowsToInsert)
-          .select();
+        const result: any[] = [];
+        const fresh: any[] = [];
+        for (const a of attendees) {
+          const old = otherByName.get(String(a.name).trim().toLowerCase());
+          if (old) {
+            const { data: upd, error: updErr } = await supabase
+              .from("registrations")
+              .update({
+                user_id: userRow.id,
+                attendee_name: String(a.name).trim(),
+                attendee_phone: a.phone || "",
+                notes: a.notes || null,
+                extra_data: a.extra_data || {},
+                status: old.status === "checked_in" ? "checked_in" : "pending",
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", old.id)
+              .select()
+              .single();
+            if (updErr) return json({ error: updErr.message }, 400);
+            result.push(upd);
+          } else {
+            fresh.push({
+              user_id: userRow.id,
+              event_id,
+              attendee_name: String(a.name).trim(),
+              attendee_phone: a.phone || "",
+              notes: a.notes || null,
+              extra_data: a.extra_data || {},
+              status: "pending",
+            });
+          }
+        }
+        if (fresh.length > 0) {
+          const { data: regRows, error: regErr } = await supabase
+            .from("registrations")
+            .insert(fresh)
+            .select();
+          if (regErr) return json({ error: regErr.message }, 400);
+          result.push(...(regRows || []));
+        }
 
-        if (regErr) return json({ error: regErr.message }, 400);
-
-        return json({ user: userRow, registrations: regRows });
+        return json({ user: userRow, registrations: result, overwritten: clash.length });
       }
 
       // ---- Edit one attendee the submitter already registered ----
@@ -194,7 +237,17 @@ serve(async (req) => {
         }
 
         const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
-        if (name !== undefined) update.attendee_name = String(name).trim();
+        if (name !== undefined) {
+          const { data: ev } = await supabase.from("registrations").select("event_id").eq("id", registration_id).maybeSingle();
+          const { data: same } = await supabase
+            .from("registrations").select("id, attendee_name")
+            .eq("event_id", ev?.event_id).neq("status", "cancelled").neq("id", registration_id);
+          const nn = String(name).trim().toLowerCase();
+          if ((same || []).some((r: any) => String(r.attendee_name || "").trim().toLowerCase() === nn)) {
+            return json({ error: "「" + String(name).trim() + "」已經有人報名過本活動了，不能改成相同的姓名。" }, 409);
+          }
+          update.attendee_name = String(name).trim();
+        }
         if (phone !== undefined) update.attendee_phone = phone;
         if (extra_data !== undefined) update.extra_data = extra_data;
         if (notes !== undefined) update.notes = notes;
