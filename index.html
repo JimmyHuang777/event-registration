@@ -272,7 +272,13 @@
       <div id="existing-list"></div>
     </div>
 
+    <div id="already-notice" style="display:none; margin:0 16px 16px; padding:14px 16px; background:#FFF7E0; border:1.5px solid #F2C94C; border-radius:12px; font-size:14px; line-height:1.6; color:#7A5B00;">
+      <strong>您已經報名過本活動</strong><br>
+      如需修改已報名者的資料，請使用上方人員卡片的「編輯」，不要重複送出。下方只用來新增其他人員（姓名不可與已報名者相同）。
+    </div>
+
     <form id="reg-form">
+      <div id="new-reg-area">
       <div class="section-title" id="add-section-title">新增報名人員 Add attendees</div>
       <p id="add-hint" style="font-size:12.5px; color:var(--ink-soft); margin:-4px 20px 16px; line-height:1.5;">
         可一次幫多位親友報名，點擊下方「新增一位」即可。
@@ -285,6 +291,7 @@
       <div class="field">
         <label>聯絡 Email <span class="hint">選填，用於通知</span></label>
         <input type="email" id="input-email" placeholder="you@example.com">
+      </div>
       </div>
 
       <div class="privacy-note">
@@ -397,7 +404,7 @@ async function callApi(action, extra = {}) {
     body: JSON.stringify({ action, idToken, ...extra }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || '發生錯誤 Something went wrong');
+  if (!res.ok) { const err = new Error(data.error || '發生錯誤 Something went wrong'); err.code = data.code; throw err; }
   return data;
 }
 
@@ -479,7 +486,6 @@ function collectAttendeeData(key) {
   });
   return {
     name: document.getElementById('att-name-' + key).value.trim(),
-    phone: document.getElementById('att-phone-' + key).value.trim(),
     notes: document.getElementById('att-notes-' + key).value.trim() || null,
     extra_data: extra,
   };
@@ -487,7 +493,6 @@ function collectAttendeeData(key) {
 
 function prefillAttendeeBlock(key, data) {
   document.getElementById('att-name-' + key).value = data.attendee_name || '';
-  document.getElementById('att-phone-' + key).value = data.attendee_phone || '';
   const notesEl = document.getElementById('att-notes-' + key);
   if (notesEl) notesEl.value = data.notes || '';
 
@@ -513,17 +518,10 @@ function prefillAttendeeBlock(key, data) {
 function validateAttendeeBlock(key) {
   let valid = true;
   const nameInput = document.getElementById('att-name-' + key);
-  const phoneInput = document.getElementById('att-phone-' + key);
-  const phonePattern = /^[0-9\-+ ]{8,15}$/;
 
   const name = nameInput.value.trim();
   nameInput.closest('.field').classList.toggle('has-error', !name);
   if (!name) valid = false;
-
-  const phone = phoneInput.value.trim();
-  const phoneValid = phonePattern.test(phone);
-  phoneInput.closest('.field').classList.toggle('has-error', !phoneValid);
-  if (!phoneValid) valid = false;
 
   currentFormSchema.forEach(field => {
     if (!field.required) return;
@@ -562,11 +560,6 @@ function attendeeBlockHTML(key, prefillName) {
         <label>姓名 Full name</label>
         <input type="text" id="att-name-${key}" value="${escapeHtml(prefillName || '')}" required>
         <div class="field-error">請輸入姓名</div>
-      </div>
-      <div class="field">
-        <label>手機號碼 Phone</label>
-        <input type="tel" id="att-phone-${key}" placeholder="0912-345-678" required>
-        <div class="field-error">請輸入正確的手機號碼</div>
       </div>
       <div id="att-dynamic-${key}"></div>
       <div class="field">
@@ -650,7 +643,6 @@ function personValueForLabel(label, p) {
 
 function applyPersonToBlock(key, p) {
   document.getElementById('att-name-' + key).value = p.full_name || '';
-  document.getElementById('att-phone-' + key).value = p.phone || '';
   currentFormSchema.forEach(field => {
     const value = personValueForLabel(field.label || '', p);
     if (!value) return;
@@ -702,7 +694,6 @@ function existingCardHTML(r) {
         <div class="existing-card-name">${escapeHtml(r.attendee_name)}</div>
         <span class="existing-status-badge ${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
       </div>
-      <div class="existing-card-sub">${escapeHtml(r.attendee_phone || '')}</div>
       ${details ? `<div class="existing-card-details">${details}</div>` : ''}
       <div class="existing-card-actions">
         <button type="button" class="link-btn edit-existing-btn" data-reg-id="${r.id}">編輯</button>
@@ -711,9 +702,19 @@ function existingCardHTML(r) {
     </div>`;
 }
 
+// Already-registered people are pointed to 編輯; the form stays available
+// only for adding OTHER people (same name can't be registered twice).
+function syncAlreadyRegistered() {
+  const has = (existingRegistrations || []).some(r => r.status !== 'cancelled');
+  document.getElementById('already-notice').style.display = has ? 'block' : 'none';
+  document.getElementById('add-section-title').textContent = has ? '新增其他人員 Add other attendees' : '新增報名人員 Add attendees';
+  return has;
+}
+
 function renderExistingList() {
   const listEl = document.getElementById('existing-list');
   const section = document.getElementById('existing-section');
+  syncAlreadyRegistered();
   if (!existingRegistrations || existingRegistrations.length === 0) {
     section.style.display = 'none';
     listEl.innerHTML = '';
@@ -735,11 +736,6 @@ function startEditExisting(regId) {
       <label>姓名 Full name</label>
       <input type="text" id="att-name-${key}" required>
       <div class="field-error">請輸入姓名</div>
-    </div>
-    <div class="field">
-      <label>手機號碼 Phone</label>
-      <input type="tel" id="att-phone-${key}" required>
-      <div class="field-error">請輸入正確的手機號碼</div>
     </div>
     <div id="att-dynamic-${key}"></div>
     <div class="field">
@@ -773,7 +769,7 @@ document.getElementById('existing-list').addEventListener('click', async (e) => 
     saveBtn.textContent = '儲存中…';
     try {
       const { registration } = await callApi('update_attendee', {
-        registration_id: regId, name: data.name, phone: data.phone,
+        registration_id: regId, name: data.name,
         extra_data: data.extra_data, notes: data.notes,
       });
       const idx = existingRegistrations.findIndex(r => r.id === regId);
@@ -830,7 +826,7 @@ async function initLiff() {
     const { data: ev, error: evError } = await withTimeout(
       supabasePublic
         .from('events')
-        .select('id, name, event_date, location, description, form_schema, allow_duplicate_registration')
+        .select('id, name, event_date, location, description, form_schema')
         .eq('slug', currentEventSlug)
         .eq('is_active', true)
         .single(),
@@ -864,9 +860,6 @@ async function initLiff() {
       const descEl = document.getElementById('event-description');
       descEl.textContent = ev.description;
       descEl.style.display = 'block';
-    }
-    if (ev.allow_duplicate_registration) {
-      document.getElementById('add-hint').innerHTML += '<br>本活動開放重複報名：同一位也可以再次送出（例如多場次或多次參加）。';
     }
     addAttendeeBlock('');
 
@@ -959,17 +952,47 @@ document.getElementById('reg-form').addEventListener('submit', async (e) => {
   });
   if (!allValid) return;
 
+  // Same name as someone already registered → point to 編輯 instead.
+  const normName = (n) => String(n || '').trim().toLowerCase();
+  const have = new Set(existingRegistrations.filter(r => r.status !== 'cancelled').map(r => normName(r.attendee_name)));
+  const dupAtt = attendees.find(a => have.has(normName(a.name)));
+  if (dupAtt) {
+    alert('「' + dupAtt.name.trim() + '」已經報名過本活動了。\n如需修改資料，請使用上方人員卡片的「編輯」。');
+    return;
+  }
+  const seenNow = new Set();
+  for (const a of attendees) {
+    const k = normName(a.name);
+    if (seenNow.has(k)) { alert('「' + a.name.trim() + '」在這次送出中重複了。'); return; }
+    seenNow.add(k);
+  }
+
   const submitBtn = document.getElementById('submit-btn');
   submitBtn.disabled = true;
   submitBtn.textContent = '送出中…';
 
   try {
-    const { registrations } = await callApi('register_for_event', {
+    const send = (overwrite) => callApi('register_for_event', {
       event_id: currentEventId,
       display_name: lineProfile.displayName,
       email: document.getElementById('input-email').value.trim() || null,
       attendees,
+      overwrite: !!overwrite,
     });
+    let result;
+    try {
+      result = await send(false);
+    } catch (err) {
+      // Someone else already registered the same name → confirm overwrite.
+      if (err.code !== 'duplicate_other') throw err;
+      if (!confirm(err.message + '\n\n按「確定」＝覆蓋原本的報名（原報名會改由您管理）\n按「取消」＝不送出')) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '送出報名 Submit';
+        return;
+      }
+      result = await send(true);
+    }
+    const registrations = result.registrations;
 
     existingRegistrations = existingRegistrations.concat(registrations || []);
 

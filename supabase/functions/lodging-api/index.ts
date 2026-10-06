@@ -273,7 +273,7 @@ serve(async (req) => {
         const propertyName = (body.property_name || "").trim();
         const propertyType = (body.property_type || "").trim();
         const propertyAddress = (body.property_address || "").trim();
-        if (!contactName || !contactPhone) return json({ error: "請填寫房東姓名與聯絡電話。" }, 400);
+        if (!contactName) return json({ error: "請填寫房東姓名。" }, 400);
         if (!propertyName || !propertyAddress) return json({ error: "請填寫房源名稱與地址。" }, 400);
 
         const { data, error } = await supabase
@@ -472,7 +472,7 @@ serve(async (req) => {
 
         const guestName = (guest_name || "").trim();
         const guestPhone = (guest_phone || "").trim();
-        if (!guestName || !guestPhone) return json({ error: "請填寫姓名與聯絡電話。" }, 400);
+        if (!guestName) return json({ error: "請填寫姓名。" }, 400);
 
         const additionalGuests = Array.isArray(body.additional_guests)
           ? body.additional_guests.map((n: unknown) => String(n || "").trim()).filter((n: string) => n.length > 0)

@@ -786,7 +786,6 @@ async function openAdminInstanceDetail(instanceId) {
         <div class="attendee-row" data-attendance-id="${a.attendance_id}">
           <div>
             <div class="name">${escapeHtml(a.name)}</div>
-            ${a.phone ? '<div class="item-meta">' + escapeHtml(a.phone) + '</div>' : ''}
           </div>
           <button type="button" class="btn-text attend-toggle-btn ${a.attended ? 'primary' : ''}">${a.attended ? '✓ 已出席' : '標記出席'}</button>
         </div>
