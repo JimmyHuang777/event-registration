@@ -133,7 +133,7 @@
     border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 18px;
   }
 
-  #main-screen, #form-screen { display: none; flex-direction: column; flex: 1; }
+  #main-screen, #form-screen, #regs-screen { display: none; flex-direction: column; flex: 1; }
 </style>
 </head>
 <body>
@@ -168,9 +168,25 @@
       <span class="name" id="profile-name">—</span>
     </div>
     <div class="content">
-      <div id="leader-note" style="display:none; margin-bottom:14px; padding:10px 12px; background:#FFF7E6; border-radius:10px; font-size:13px; line-height:1.6; color:#7A5200;">您是壇組長，可編輯所屬壇的活動；新增、啟用／停用與刪除活動需由活動管理員操作。</div>
+      <div id="leader-note" style="display:none; margin-bottom:14px; padding:10px 12px; background:#FFF7E6; border-radius:10px; font-size:13px; line-height:1.6; color:#7A5200;">您是壇組長，可編輯所屬壇的活動、查看報名並更新報到；新增、啟用／停用與刪除活動需由活動管理員操作。</div>
       <button type="button" class="btn-primary new-event-btn" id="new-event-btn">＋ 新增活動 New Event</button>
       <div id="event-list"></div>
+    </div>
+  </div>
+
+  <div id="regs-screen">
+    <div class="header">
+      <h1 id="regs-title">報名名單</h1>
+      <p>查看報名並更新報到狀態</p>
+    </div>
+    <div class="content">
+      <div id="regs-stats" style="display:flex; gap:8px; margin-bottom:12px;"></div>
+      <input type="text" id="regs-search" placeholder="搜尋姓名…" style="width:100%; padding:11px 12px; border:1px solid #E5E7EB; border-radius:10px; font-size:15px; margin-bottom:8px; box-sizing:border-box;">
+      <div id="regs-filter" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
+      <div id="regs-list"></div>
+      <div class="form-actions" style="margin-top:14px;">
+        <button type="button" class="btn-cancel" id="regs-back-btn">返回</button>
+      </div>
     </div>
   </div>
 
@@ -267,10 +283,11 @@ const screens = {
   noAccess: document.getElementById('no-access-screen'),
   main: document.getElementById('main-screen'),
   form: document.getElementById('form-screen'),
+  regs: document.getElementById('regs-screen'),
 };
 function showScreen(name) {
   Object.entries(screens).forEach(([key, el]) => {
-    if (key === 'main' || key === 'form') { el.style.display = key === name ? 'flex' : 'none'; }
+    if (key === 'main' || key === 'form' || key === 'regs') { el.style.display = key === name ? 'flex' : 'none'; }
     else { el.classList.toggle('active', key === name); }
   });
 }
@@ -428,6 +445,7 @@ function renderEventList() {
       </div>
       <div class="event-meta">${ev.event_date || '日期未定'}${ev.location ? '・📍 ' + escapeHtml(ev.location) : ''}</div>
       <div class="event-actions">
+        <button type="button" class="btn-text" data-action="regs">報名名單</button>
         <button type="button" class="btn-text" data-action="edit">編輯 Edit</button>
         ${isGlobalAdmin ? `<button type="button" class="btn-text" data-action="toggle">${ev.is_active ? '停用' : '啟用'}</button>
         <button type="button" class="btn-text danger" data-action="delete">刪除 Delete</button>` : ''}
@@ -436,6 +454,7 @@ function renderEventList() {
 
   listEl.querySelectorAll('.event-card').forEach(card => {
     const id = card.dataset.id;
+    card.querySelector('[data-action="regs"]').addEventListener('click', () => openRegs(id));
     card.querySelector('[data-action="edit"]').addEventListener('click', () => openForm(allEvents.find(e => e.id === id)));
     const toggleBtn = card.querySelector('[data-action="toggle"]');
     if (toggleBtn) toggleBtn.addEventListener('click', async () => {
@@ -462,6 +481,75 @@ function renderEventList() {
 }
 
 document.getElementById('new-event-btn').addEventListener('click', () => openForm(null));
+
+/* ---------- 報名名單 Registrations (view + check-in) ---------- */
+const REG_STATUS = { pending: '待確認', confirmed: '已確認', checked_in: '已報到', cancelled: '已取消' };
+const REG_COLOR = { pending: '#B45309', confirmed: '#2563A8', checked_in: '#067A37', cancelled: '#B91C1C' };
+let regsState = { eventId: null, event: null, rows: [], filter: 'all', q: '' };
+
+async function openRegs(eventId) {
+  regsState = { eventId, event: null, rows: [], filter: 'all', q: '' };
+  document.getElementById('regs-search').value = '';
+  document.getElementById('regs-list').innerHTML = '<div class="empty-note">載入中…</div>';
+  showScreen('regs');
+  try {
+    const res = await callApi('list_registrations', { event_id: eventId });
+    regsState.event = res.event;
+    regsState.rows = res.registrations || [];
+    document.getElementById('regs-title').textContent = (res.event && res.event.name) || '報名名單';
+    renderRegs();
+  } catch (err) {
+    document.getElementById('regs-list').innerHTML = '<div class="empty-note">載入失敗：' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderRegs() {
+  const rows = regsState.rows;
+  const cnt = k => rows.filter(r => r.status === k).length;
+  const stat = (label, n, c) => '<div style="flex:1; text-align:center; border:1.5px solid #F0F1F3; border-radius:10px; padding:8px 4px;"><div style="font-size:19px; font-weight:800; color:' + c + ';">' + n + '</div><div style="font-size:11.5px; color:#6B7280;">' + label + '</div></div>';
+  document.getElementById('regs-stats').innerHTML =
+    stat('全部', rows.filter(r => r.status !== 'cancelled').length, '#111') + stat('待確認', cnt('pending'), REG_COLOR.pending) + stat('已確認', cnt('confirmed'), REG_COLOR.confirmed) + stat('已報到', cnt('checked_in'), REG_COLOR.checked_in);
+
+  const filters = [['all', '全部'], ['pending', '待確認'], ['confirmed', '已確認'], ['checked_in', '已報到'], ['cancelled', '已取消']];
+  const fEl = document.getElementById('regs-filter');
+  fEl.innerHTML = filters.map(([k, l]) => '<button type="button" class="btn-text" data-f="' + k + '" style="border:1.5px solid ' + (regsState.filter === k ? '#06C755' : '#F0F1F3') + '; border-radius:20px; ' + (regsState.filter === k ? 'background:#E4F8EC;' : '') + '">' + l + '</button>').join('');
+  fEl.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { regsState.filter = b.dataset.f; renderRegs(); }));
+
+  const q = regsState.q.trim().toLowerCase();
+  const list = rows.filter(r => (regsState.filter === 'all' ? r.status !== 'cancelled' : r.status === regsState.filter) &&
+    (!q || (r.attendee_name || '').toLowerCase().includes(q)));
+  const schema = (regsState.event && regsState.event.form_schema) || [];
+  const el = document.getElementById('regs-list');
+  if (!list.length) { el.innerHTML = '<div class="empty-note">沒有符合的報名。</div>'; return; }
+  el.innerHTML = list.map(r => {
+    const extra = r.extra_data || {};
+    const details = schema.map(f => extra[f.id] ? escapeHtml(f.label) + '：' + escapeHtml(String(extra[f.id])) : '').filter(Boolean).join('　');
+    const by = r.users && r.users.display_name ? '報名者：' + escapeHtml(r.users.display_name) : '';
+    return '<div class="event-card" data-id="' + r.id + '"><div class="event-card-top"><div class="event-title">' + escapeHtml(r.attendee_name || '—') + '</div>' +
+      '<span class="event-status" style="background:#F3F4F6; color:' + REG_COLOR[r.status] + ';">' + (REG_STATUS[r.status] || r.status) + '</span></div>' +
+      (details ? '<div class="event-meta" style="margin-top:6px;">' + details + '</div>' : '') +
+      (r.notes ? '<div class="event-meta">備註：' + escapeHtml(r.notes) + '</div>' : '') +
+      (by ? '<div class="event-meta">' + by + '</div>' : '') +
+      '<div class="event-actions">' +
+        (r.status !== 'checked_in' ? '<button type="button" class="btn-text" data-st="checked_in">✓ 報到</button>' : '<button type="button" class="btn-text" data-st="confirmed">取消報到</button>') +
+        (r.status === 'pending' ? '<button type="button" class="btn-text" data-st="confirmed">確認</button>' : '') +
+        (r.status !== 'cancelled' ? '<button type="button" class="btn-text danger" data-st="cancelled">取消報名</button>' : '<button type="button" class="btn-text" data-st="pending">恢復</button>') +
+      '</div></div>';
+  }).join('');
+  el.querySelectorAll('.event-card').forEach(card => card.querySelectorAll('[data-st]').forEach(b => b.addEventListener('click', async () => {
+    const st = b.dataset.st;
+    if (st === 'cancelled' && !confirm('確定要取消這筆報名嗎？')) return;
+    b.disabled = true;
+    try {
+      await callApi('set_registration_status', { id: card.dataset.id, status: st });
+      const row = regsState.rows.find(x => x.id === card.dataset.id);
+      if (row) row.status = st;
+      renderRegs();
+    } catch (err) { alert('更新失敗：' + err.message); b.disabled = false; }
+  })));
+}
+document.getElementById('regs-search').addEventListener('input', e => { regsState.q = e.target.value; renderRegs(); });
+document.getElementById('regs-back-btn').addEventListener('click', () => showScreen('main'));
 
 /* ---------- Custom field builder (same shape as the dashboard's) ---------- */
 

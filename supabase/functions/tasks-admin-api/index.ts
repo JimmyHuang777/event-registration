@@ -30,6 +30,13 @@
 //   save_preset      — create or overwrite a preset (by name).
 //   delete_preset    — delete a preset.
 //
+// Scoped access (階段二): besides the global task_job_admins list, a
+// LEADER (組長) of 佛堂 / 庶務 / 住壇 in an altar may manage only the
+// jobs of their OWN altar + team — i.e. jobs linked exclusively to that
+// altar/team's task_group (task_groups.altar_id + team). Leaders can't
+// feature jobs or touch other groups' jobs; everything else here is
+// unchanged for task_job_admins.
+//
 // DEPLOY: this repo's GitHub Actions workflow deploys it
 // automatically on push to supabase/functions/tasks-admin-api/**.
 // Deployed with --no-verify-jwt (this function does its own auth via
@@ -70,6 +77,18 @@ async function verifyLineToken(idToken: string) {
   if (!data.sub) return null;
   return data as { sub: string; name?: string; picture?: string };
 }
+
+// Teams whose leaders manage their altar's jobs (kitchen has its own system).
+const TASK_TEAMS = ["shrine", "general", "resident"];
+
+// 管理者權限矩陣 (Admin Permissions): one tick per feature list. Only the
+// global task admins (task_job_admins) may use it — it writes the same six
+// tables the Dashboard's 管理者權限 screen does.
+const PERM_TABLES: Record<string, string> = {
+  event: "event_admins", task: "task_job_admins", car: "car_manager_admins",
+  lodging: "lodging_manager_admins", meeting: "meeting_admins", flow: "activity_flow_admins",
+};
+const TEAM_KEYS = ["kitchen", "shrine", "general", "resident"];
 
 const RECURRENCES = ["daily", "weekly", "monthly", "once"];
 
@@ -138,10 +157,46 @@ serve(async (req) => {
       .select("user_id")
       .eq("user_id", existingUser.id)
       .maybeSingle();
-    const isAdmin = !!adminRow;
+    const isGlobalAdmin = !!adminRow;
+
+    // Task groups this person leads: (altar, team) pairs where they're
+    // the leader of a 佛堂/庶務/住壇 team, mapped to that team's group.
+    let ledGroupIds: string[] = [];
+    let ledAltarIds: string[] = [];
+    if (!isGlobalAdmin) {
+      const { data: led } = await supabase
+        .from("altar_team_members").select("altar_id, team")
+        .eq("user_id", existingUser.id).eq("role", "leader").in("team", TASK_TEAMS);
+      if (led && led.length > 0) {
+        ledAltarIds = [...new Set(led.map((r: any) => r.altar_id))] as string[];
+        const { data: grps } = await supabase
+          .from("task_groups").select("id, altar_id, team").in("altar_id", ledAltarIds);
+        ledGroupIds = (grps || [])
+          .filter((g: any) => led.some((l: any) => l.altar_id === g.altar_id && l.team === g.team))
+          .map((g: any) => g.id);
+      }
+    }
+    const isAdmin = isGlobalAdmin || ledGroupIds.length > 0;
 
     if (action === "whoami") {
-      return json({ user: existingUser, is_admin: isAdmin });
+      return json({ user: existingUser, is_admin: isAdmin, is_global_admin: isGlobalAdmin, led_group_ids: ledGroupIds });
+    }
+
+    // Can this caller manage this job template? Leaders: only jobs linked
+    // to at least one group, all of which they lead.
+    async function canManageTemplate(templateId: string): Promise<boolean> {
+      if (isGlobalAdmin) return true;
+      const { data: links } = await supabase.from("task_template_groups").select("group_id").eq("template_id", templateId);
+      return !!links && links.length > 0 && links.every((l: any) => ledGroupIds.includes(l.group_id));
+    }
+    // Template ids (from a list) the caller may manage.
+    async function manageableTemplateIds(templateIds: string[]): Promise<Set<string>> {
+      if (isGlobalAdmin) return new Set(templateIds);
+      if (templateIds.length === 0) return new Set();
+      const { data: links } = await supabase.from("task_template_groups").select("template_id, group_id").in("template_id", templateIds);
+      const by: Record<string, string[]> = {};
+      (links || []).forEach((l: any) => { (by[l.template_id] ||= []).push(l.group_id); });
+      return new Set(templateIds.filter((id) => (by[id] || []).length > 0 && by[id].every((g) => ledGroupIds.includes(g))));
     }
 
     if (!isAdmin) {
@@ -149,6 +204,78 @@ serve(async (req) => {
     }
 
     switch (action) {
+      // ---- 管理者權限 (global task admins only) ----
+      case "perms_list": {
+        if (!isGlobalAdmin) return json({ error: "只有任務管理員可以管理權限。" }, 403);
+        const have: Record<string, Set<string>> = {};
+        const ids = new Set<string>(Array.isArray(body.extra_user_ids) ? body.extra_user_ids : []);
+        for (const [k, table] of Object.entries(PERM_TABLES)) {
+          const { data } = await supabase.from(table).select("user_id");
+          have[k] = new Set((data || []).map((r: any) => r.user_id));
+          (data || []).forEach((r: any) => ids.add(r.user_id));
+        }
+        const users: Record<string, string> = {};
+        if (ids.size > 0) {
+          const { data } = await supabase.from("users").select("id, display_name").in("id", [...ids]);
+          (data || []).forEach((u: any) => { users[u.id] = u.display_name || "—"; });
+        }
+        const rows = [...ids].map((id) => ({
+          user_id: id, name: users[id] || "—",
+          perms: Object.fromEntries(Object.keys(PERM_TABLES).map((k) => [k, have[k].has(id)])),
+        })).sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+
+        let teams = ["shrine", "general", "resident"], teamTableOk = true;
+        const { data: tRows, error: tErr } = await supabase.from("altar_manager_teams").select("team");
+        if (tErr) teamTableOk = false; else teams = (tRows || []).map((r: any) => r.team);
+        const { data: leaders } = await supabase.from("altar_team_members").select("altar_id, team, user_id")
+          .eq("role", "leader").in("team", teams.length ? teams : ["_none"]);
+        const { data: altars } = await supabase.from("altars").select("id, name");
+        const an: Record<string, string> = {}; (altars || []).forEach((a: any) => { an[a.id] = a.name; });
+        const lids = [...new Set((leaders || []).map((l: any) => l.user_id))];
+        const ln: Record<string, string> = {};
+        if (lids.length) { const { data } = await supabase.from("users").select("id, display_name").in("id", lids); (data || []).forEach((u: any) => { ln[u.id] = u.display_name; }); }
+        return json({
+          rows, teams, team_table_ok: teamTableOk, me: existingUser.id,
+          leaders: (leaders || []).map((l: any) => ({ name: ln[l.user_id] || "—", altar: an[l.altar_id] || "—", team: l.team })),
+        });
+      }
+
+      case "perms_search_users": {
+        if (!isGlobalAdmin) return json({ error: "只有任務管理員可以管理權限。" }, 403);
+        const q = String(body.query || "").trim().replace(/[,()%]/g, " ");
+        if (!q) return json({ users: [] });
+        const { data, error } = await supabase.from("users").select("id, display_name").ilike("display_name", `%${q}%`).limit(15);
+        if (error) return json({ error: error.message }, 400);
+        return json({ users: data || [] });
+      }
+
+      case "perms_set": {
+        if (!isGlobalAdmin) return json({ error: "只有任務管理員可以管理權限。" }, 403);
+        const table = PERM_TABLES[body.key];
+        if (!table || !body.user_id) return json({ error: "Missing fields." }, 400);
+        if (body.key === "task" && !body.enabled && body.user_id === existingUser.id) {
+          return json({ error: "不能移除自己的任務管理權限（避免把自己鎖在外面）。" }, 400);
+        }
+        if (body.enabled) {
+          const { error } = await supabase.from(table).upsert({ user_id: body.user_id }, { onConflict: "user_id" });
+          if (error) return json({ error: error.message }, 400);
+        } else {
+          const { error } = await supabase.from(table).delete().eq("user_id", body.user_id);
+          if (error) return json({ error: error.message }, 400);
+        }
+        return json({ ok: true });
+      }
+
+      case "perms_set_team": {
+        if (!isGlobalAdmin) return json({ error: "只有任務管理員可以管理權限。" }, 403);
+        if (!TEAM_KEYS.includes(body.team)) return json({ error: "Invalid team." }, 400);
+        const { error } = body.enabled
+          ? await supabase.from("altar_manager_teams").upsert({ team: body.team })
+          : await supabase.from("altar_manager_teams").delete().eq("team", body.team);
+        if (error) return json({ error: error.message + "（請先執行 SQL/53-altar-manager-teams.sql）" }, 400);
+        return json({ ok: true });
+      }
+
       // ---- Upcoming instances (next 90 days) with sub-task status, for assigning ----
       case "list_upcoming": {
         const from = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
@@ -161,7 +288,8 @@ serve(async (req) => {
           .gte("occurrence_date", from).lte("occurrence_date", to)
           .order("occurrence_date", { ascending: true });
         if (instErr) return json({ error: instErr.message }, 400);
-        const active = (insts || []).filter((i: any) => i.task_templates && i.task_templates.is_active);
+        const okTpl = await manageableTemplateIds([...new Set((insts || []).map((i: any) => i.template_id))] as string[]);
+        const active = (insts || []).filter((i: any) => i.task_templates && i.task_templates.is_active && okTpl.has(i.template_id));
         if (active.length === 0) return json({ instances: [] });
 
         const tplIds = [...new Set(active.map((i: any) => i.template_id))];
@@ -203,6 +331,7 @@ serve(async (req) => {
       case "search_users": {
         const q = String(body.query || "").trim().replace(/[,()%]/g, " ");
         if (!q || !body.template_id) return json({ users: [] });
+        if (!(await canManageTemplate(body.template_id))) return json({ error: "您沒有管理此工作的權限。" }, 403);
         const { data: found, error } = await supabase
           .from("users").select("id, display_name")
           .ilike("display_name", `%${q}%`).limit(15);
@@ -221,6 +350,7 @@ serve(async (req) => {
         const { data: inst } = await supabase.from("task_instances").select("id, template_id").eq("id", instance_id).maybeSingle();
         const { data: sub } = await supabase.from("task_subtask_templates").select("id, template_id, slots").eq("id", subtask_template_id).maybeSingle();
         if (!inst || !sub || sub.template_id !== inst.template_id) return json({ error: "找不到這個子項目。" }, 404);
+        if (!(await canManageTemplate(inst.template_id))) return json({ error: "您沒有管理此工作的權限。" }, 403);
         if (!force && !(await userCanSeeTemplate(inst.template_id, user_id))) {
           return json({ error: "此人不在這項工作的適用群組／壇內。", not_eligible: true }, 409);
         }
@@ -250,6 +380,11 @@ serve(async (req) => {
       // ---- Take an assignment back (returns to 未指派) ----
       case "unassign_subtask": {
         if (!body.completion_id) return json({ error: "Missing completion_id." }, 400);
+        if (!isGlobalAdmin) {
+          const { data: comp } = await supabase.from("task_subtask_completions").select("instance_id").eq("id", body.completion_id).maybeSingle();
+          const { data: inst2 } = comp ? await supabase.from("task_instances").select("template_id").eq("id", comp.instance_id).maybeSingle() : { data: null };
+          if (!inst2 || !(await canManageTemplate(inst2.template_id))) return json({ error: "您沒有管理此工作的權限。" }, 403);
+        }
         const { error } = await supabase.from("task_subtask_completions").delete().eq("id", body.completion_id).eq("status", "taken");
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
@@ -263,7 +398,12 @@ serve(async (req) => {
           .order("created_at", { ascending: true });
         if (error) return json({ error: error.message }, 400);
 
-        const templateIds = (templates || []).map((t: any) => t.id);
+        let visibleTemplates = templates || [];
+        if (!isGlobalAdmin) {
+          const okIds = await manageableTemplateIds(visibleTemplates.map((t: any) => t.id));
+          visibleTemplates = visibleTemplates.filter((t: any) => okIds.has(t.id));
+        }
+        const templateIds = visibleTemplates.map((t: any) => t.id);
         let subtasks: any[] = [];
         let templateGroups: any[] = [];
 
@@ -284,7 +424,7 @@ serve(async (req) => {
           templateGroups = tg || [];
         }
 
-        const result = (templates || []).map((t: any) => ({
+        const result = visibleTemplates.map((t: any) => ({
           ...t,
           subtasks: subtasks.filter((s: any) => s.template_id === t.id),
           group_ids: templateGroups.filter((g: any) => g.template_id === t.id).map((g: any) => g.group_id),
@@ -310,7 +450,7 @@ serve(async (req) => {
           .select("id, name, altar_id, team, altars ( name )")
           .order("created_at", { ascending: true });
         if (error) return json({ error: error.message }, 400);
-        return json({ groups: data || [] });
+        return json({ groups: (data || []).filter((g: any) => isGlobalAdmin || ledGroupIds.includes(g.id)) });
       }
 
       // ---- All saved job presets ----
@@ -320,7 +460,8 @@ serve(async (req) => {
           .select("*")
           .order("name", { ascending: true });
         if (error) return json({ error: error.message }, 400);
-        return json({ presets: data || [] });
+        const presetsOk = (data || []).filter((p: any) => isGlobalAdmin || (Array.isArray(p.group_ids) && p.group_ids.length > 0 && p.group_ids.every((g: string) => ledGroupIds.includes(g))));
+        return json({ presets: presetsOk });
       }
 
       // ---- Create or update a job template ----
@@ -332,6 +473,16 @@ serve(async (req) => {
 
         const cleanTitle = (title || "").trim();
         if (!cleanTitle) return json({ error: "請填寫工作名稱。" }, 400);
+        if (!isGlobalAdmin) {
+          // Leaders: must keep the job inside their own group(s).
+          const want = Array.isArray(group_ids) ? group_ids : [];
+          if (want.length === 0 || !want.every((g: string) => ledGroupIds.includes(g))) {
+            return json({ error: "請限定在您所屬壇・組的群組（至少勾選一個，且不能勾選其他群組）。" }, 403);
+          }
+          if (id && !(await canManageTemplate(id))) return json({ error: "您沒有管理此工作的權限。" }, 403);
+          delete body.is_featured;
+          if (body.altar_id && !ledAltarIds.includes(body.altar_id)) delete body.altar_id;
+        }
         if (!RECURRENCES.includes(recurrence)) return json({ error: "頻率不正確。" }, 400);
 
         let cleanStart = start_date || null;
@@ -352,7 +503,7 @@ serve(async (req) => {
           place: place ? String(place).trim() : null,
           start_date: cleanStart,
           end_date: cleanEnd,
-          is_featured: !!body.is_featured,
+          ...("is_featured" in body ? { is_featured: !!body.is_featured } : {}),
         };
         if ("altar_id" in body) payload.altar_id = body.altar_id || null;
 
@@ -424,6 +575,7 @@ serve(async (req) => {
       case "toggle_template_active": {
         const { id } = body;
         if (!id) return json({ error: "Missing id." }, 400);
+        if (!(await canManageTemplate(id))) return json({ error: "您沒有管理此工作的權限。" }, 403);
         const { data: tpl } = await supabase.from("task_templates").select("is_active").eq("id", id).maybeSingle();
         if (!tpl) return json({ error: "This job no longer exists." }, 404);
         const { error } = await supabase.from("task_templates").update({ is_active: !tpl.is_active }).eq("id", id);
@@ -435,6 +587,7 @@ serve(async (req) => {
       case "delete_template": {
         const { id } = body;
         if (!id) return json({ error: "Missing id." }, 400);
+        if (!(await canManageTemplate(id))) return json({ error: "您沒有管理此工作的權限。" }, 403);
         const { error } = await supabase.from("task_templates").delete().eq("id", id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
@@ -447,6 +600,16 @@ serve(async (req) => {
         const cleanTitle = (title || "").trim();
         if (!cleanName) return json({ error: "請填寫範本名稱。" }, 400);
         if (!cleanTitle) return json({ error: "請填寫工作名稱。" }, 400);
+        if (!isGlobalAdmin) {
+          const want = Array.isArray(group_ids) ? group_ids : [];
+          if (want.length === 0 || !want.every((g: string) => ledGroupIds.includes(g))) {
+            return json({ error: "範本需限定在您所屬壇・組的群組。" }, 403);
+          }
+          const { data: old } = await supabase.from("task_job_presets").select("group_ids").eq("name", cleanName).maybeSingle();
+          if (old && !(Array.isArray(old.group_ids) && old.group_ids.length > 0 && old.group_ids.every((g: string) => ledGroupIds.includes(g)))) {
+            return json({ error: "已有同名範本，您沒有權限覆蓋。" }, 403);
+          }
+        }
 
         const payload = {
           name: cleanName,
@@ -471,6 +634,12 @@ serve(async (req) => {
       case "delete_preset": {
         const { id } = body;
         if (!id) return json({ error: "Missing id." }, 400);
+        if (!isGlobalAdmin) {
+          const { data: pr } = await supabase.from("task_job_presets").select("group_ids").eq("id", id).maybeSingle();
+          if (!pr || !(Array.isArray(pr.group_ids) && pr.group_ids.length > 0 && pr.group_ids.every((g: string) => ledGroupIds.includes(g)))) {
+            return json({ error: "您沒有權限刪除此範本。" }, 403);
+          }
+        }
         const { error } = await supabase.from("task_job_presets").delete().eq("id", id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });

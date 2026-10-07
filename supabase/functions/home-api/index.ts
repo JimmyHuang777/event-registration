@@ -163,9 +163,28 @@ serve(async (req) => {
       supabase.from("event_admins").select("user_id").eq("user_id", existingUser.id).maybeSingle(),
       supabase.from("task_group_members").select("group_id").eq("user_id", existingUser.id),
     ]);
-    const isJobAdmin = !!jobAdminRow;
+    // Altar team leaders (組長) get the scoped admin pages: 任務管理 for
+    // their own 佛堂/庶務/住壇 group, 活動管理 for their altar's events
+    // (teams listed in altar_manager_teams, SQL 53).
+    const { data: leaderRows } = await supabase
+      .from("altar_team_members").select("altar_id, team")
+      .eq("user_id", existingUser.id).eq("role", "leader");
+    let managerTeams = ["shrine", "general", "resident"];
+    {
+      const { data: mt, error: mtErr } = await supabase.from("altar_manager_teams").select("team");
+      if (!mtErr && mt) managerTeams = mt.map((r: any) => r.team);
+    }
+    let isTaskLeader = false;
+    const taskLeaderRows = (leaderRows || []).filter((r: any) => ["shrine", "general", "resident"].includes(r.team));
+    if (taskLeaderRows.length > 0) {
+      const { data: lg } = await supabase.from("task_groups").select("altar_id, team")
+        .in("altar_id", [...new Set(taskLeaderRows.map((r: any) => r.altar_id))]);
+      isTaskLeader = (lg || []).some((g: any) => taskLeaderRows.some((r: any) => r.altar_id === g.altar_id && r.team === g.team));
+    }
+    const isEventLeader = (leaderRows || []).some((r: any) => managerTeams.includes(r.team));
+    const isJobAdmin = !!jobAdminRow || isTaskLeader;
     const isFlowAdmin = !!flowAdminRow;
-    const isEventAdmin = !!eventAdminRow;
+    const isEventAdmin = !!eventAdminRow || isEventLeader;
     const myGroupIds = new Set((myGroupRows || []).map((r: any) => r.group_id));
 
     // ---- Any task template visible to this member? ----

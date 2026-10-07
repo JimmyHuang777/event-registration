@@ -161,6 +161,13 @@ serve(async (req) => {
     }
     const isAdmin = isGlobalAdmin || managedAltarIds.length > 0;
 
+    // Can this caller manage this event's registrations / content?
+    async function canManageEvent(eventId: string): Promise<boolean> {
+      if (isGlobalAdmin) return true;
+      const { data: e } = await supabase.from("events").select("altar_id").eq("id", eventId).maybeSingle();
+      return !!(e && e.altar_id && managedAltarIds.includes(e.altar_id));
+    }
+
     if (action === "whoami") {
       return json({ user: existingUser, is_admin: isAdmin, is_global_admin: isGlobalAdmin, managed_altar_ids: managedAltarIds });
     }
@@ -269,6 +276,39 @@ serve(async (req) => {
         await syncEventGroups(newEvent.id, groupIds);
 
         return json({ ok: true, event: newEvent });
+      }
+
+      // ---- Registrations of one event (view + check-in) ----
+      // Global event admins: any event. Altar leaders: their altar's events.
+      case "list_registrations": {
+        const eventId = body.event_id;
+        if (!eventId) return json({ error: "Missing event_id." }, 400);
+        if (!(await canManageEvent(eventId))) return json({ error: "您沒有管理此活動的權限。" }, 403);
+        const { data: ev } = await supabase.from("events").select("id, name, form_schema").eq("id", eventId).maybeSingle();
+        const { data, error } = await supabase
+          .from("registrations")
+          .select("id, status, notes, extra_data, attendee_name, created_at, users ( display_name )")
+          .eq("event_id", eventId)
+          .order("created_at", { ascending: false });
+        if (error) return json({ error: error.message }, 400);
+        return json({ event: ev, registrations: data || [] });
+      }
+
+      // ---- Change registration status (確認 / 報到 / 取消) ----
+      case "set_registration_status": {
+        const ids: string[] = Array.isArray(body.ids) ? body.ids : (body.id ? [body.id] : []);
+        const status = body.status;
+        if (ids.length === 0) return json({ error: "Missing ids." }, 400);
+        if (!["pending", "confirmed", "checked_in", "cancelled"].includes(status)) return json({ error: "Invalid status." }, 400);
+        const { data: regs } = await supabase.from("registrations").select("id, event_id").in("id", ids);
+        const eventIds = [...new Set((regs || []).map((r: any) => r.event_id))];
+        if (!regs || regs.length !== ids.length) return json({ error: "找不到部分報名資料。" }, 404);
+        for (const eid of eventIds) {
+          if (!(await canManageEvent(eid as string))) return json({ error: "您沒有管理此活動的權限。" }, 403);
+        }
+        const { error } = await supabase.from("registrations").update({ status }).in("id", ids);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
       }
 
       // ---- Toggle active/inactive ----

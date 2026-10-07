@@ -53,7 +53,7 @@
     background: none; border: 1.5px dashed #D6D9DE; border-radius: 8px; padding: 9px;
     width: 100%; color: var(--ink-soft); font-size: 13px; cursor: pointer; font-family: inherit; margin-bottom: 14px;
   }
-  #assign-screen { display: none; flex-direction: column; flex: 1; }
+  #assign-screen, #perms-screen { display: none; flex-direction: column; flex: 1; }
   .asg-date { font-size: 13px; font-weight: 800; color: var(--ink-soft); margin: 18px 2px 8px; }
   .asg-card { background: var(--paper); border: 1px solid var(--canvas); border-radius: 14px; padding: 14px; margin-bottom: 10px; }
   .asg-title { font-size: 15px; font-weight: 800; }
@@ -92,6 +92,7 @@
   .job-actions .btn-text { border: 1.5px solid var(--canvas); border-radius: 8px; }
 
   .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 30px 10px; }
+
 
 /* ---------- Form ---------- */
   .field { margin-bottom: 14px; }
@@ -194,9 +195,31 @@
       <span class="name" id="profile-name">—</span>
     </div>
     <div class="content">
+      <div id="leader-note" style="display:none; margin-bottom:14px; padding:10px 12px; background:#FFF7E6; border-radius:10px; font-size:13px; line-height:1.6; color:#7A5200;">您是壇組長，只能管理「所屬壇・組」的工作；新增工作時請勾選您所屬的群組。</div>
       <button type="button" class="btn-primary new-job-btn" id="new-job-btn">＋ 新增工作 New Job</button>
       <button type="button" class="btn-primary new-job-btn" id="open-assign-btn" style="background:#2563EB;">📅 近期排程／指派子項目</button>
+      <button type="button" class="btn-primary new-job-btn" id="open-perms-btn" style="background:#7C3AED;">👥 管理者權限</button>
       <div id="job-list"></div>
+    </div>
+  </div>
+
+  <div id="perms-screen">
+    <div class="header">
+      <a href="#" id="perms-back-btn" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">‹ 返回工作管理</a>
+      <h1 style="margin-top:6px;">管理者權限 Permissions</h1>
+      <p>勾選每個人擁有的管理權限（與後台相同）</p>
+    </div>
+    <div class="content">
+      <div style="overflow-x:auto; margin-bottom:12px;"><table id="perms-table" style="width:100%; border-collapse:collapse; font-size:13.5px;"></table></div>
+      <input type="text" id="perms-search" placeholder="搜尋姓名以加入列表…" style="width:100%; padding:11px 12px; border:1px solid #E5E7EB; border-radius:10px; font-size:15px; box-sizing:border-box;">
+      <div id="perms-results" style="margin:8px 0 14px;"></div>
+      <div style="border-top:1px solid #F0F1F3; padding-top:12px;">
+        <div style="font-weight:800; margin-bottom:6px;">壇組長自動管理活動</div>
+        <div style="font-size:12.5px; color:#6B7280; line-height:1.6; margin-bottom:8px;">勾選的組，其組長自動管理所屬壇的活動（可編輯、看報名與報到；不能新增、啟停、刪除）。</div>
+        <div id="perms-teams" style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px;"></div>
+        <div id="perms-leaders" style="font-size:13px; color:#6B7280; line-height:1.8;"></div>
+      </div>
+      <p id="perms-msg" style="font-size:13px; min-height:18px; margin-top:10px;"></p>
     </div>
   </div>
 
@@ -349,10 +372,11 @@ const screens = {
   main: document.getElementById('main-screen'),
   form: document.getElementById('form-screen'),
   assign: document.getElementById('assign-screen'),
+  perms: document.getElementById('perms-screen'),
 };
 function showScreen(name) {
   Object.entries(screens).forEach(([key, el]) => {
-    if (key === 'main' || key === 'form' || key === 'assign') { el.style.display = key === name ? 'flex' : 'none'; }
+    if (key === 'main' || key === 'form' || key === 'assign' || key === 'perms') { el.style.display = key === name ? 'flex' : 'none'; }
     else { el.classList.toggle('active', key === name); }
   });
 }
@@ -361,6 +385,7 @@ let idToken = null;
 let lineProfile = null;
 let allTemplates = [];
 let allGroups = [];
+let isGlobalAdmin = true;
 let allPresets = [];
 let editingId = null;
 let subtaskRowCount = 0;
@@ -466,6 +491,15 @@ async function initLiff() {
     if (!who.is_admin) {
       showScreen('noAccess');
       return;
+    }
+
+    // 壇組長（非全域任務管理員）：只能管理自己壇・組的工作
+    isGlobalAdmin = !!who.is_global_admin;
+    if (!isGlobalAdmin) {
+      document.getElementById('leader-note').style.display = 'block';
+      document.getElementById('open-perms-btn').style.display = 'none';
+      document.getElementById('f-altar').closest('.field').style.display = 'none';
+      document.getElementById('f-featured').closest('.field').style.display = 'none';
     }
 
     await loadAll();
@@ -653,6 +687,77 @@ document.getElementById('assign-picker-results').addEventListener('click', async
 });
 
 document.getElementById('open-assign-btn').addEventListener('click', openAssignScreen);
+
+/* ---------- 管理者權限 Permissions (global task admins only) ---------- */
+const PERM_COLS = [['event', '活動'], ['task', '任務'], ['car', '共乘'], ['lodging', '住宿'], ['meeting', '會議'], ['flow', '流程']];
+const PERM_TEAM_LABELS = { kitchen: '天廚', shrine: '佛堂', general: '庶務', resident: '住壇' };
+let permsExtra = [];
+function permsMsg(t, bad) { const e = document.getElementById('perms-msg'); e.style.color = bad ? '#B91C1C' : '#6B7280'; e.textContent = t || ''; }
+
+async function openPerms() {
+  document.getElementById('perms-search').value = '';
+  document.getElementById('perms-results').innerHTML = '';
+  showScreen('perms');
+  await loadPerms();
+}
+async function loadPerms() {
+  permsMsg('載入中…');
+  try {
+    const r = await callApi('perms_list', { extra_user_ids: permsExtra });
+    renderPerms(r);
+    permsMsg('');
+  } catch (err) { permsMsg('載入失敗：' + err.message, true); }
+}
+function renderPerms(r) {
+  const th = 'style="padding:8px 6px; border-bottom:1px solid #F0F1F3; text-align:center; white-space:nowrap;"';
+  const head = '<tr><th style="padding:8px 6px; border-bottom:1px solid #F0F1F3; text-align:left;">人員</th>' + PERM_COLS.map(c => '<th ' + th + '>' + c[1] + '</th>').join('') + '</tr>';
+  const t = document.getElementById('perms-table');
+  t.innerHTML = head + (r.rows.length ? r.rows.map(row => '<tr data-uid="' + row.user_id + '"><td style="padding:7px 6px; border-bottom:1px solid #F0F1F3;">' + escapeHtml(row.name) + '</td>' +
+    PERM_COLS.map(c => '<td ' + th + '><input type="checkbox" class="perm-cb" data-key="' + c[0] + '" ' + (row.perms[c[0]] ? 'checked' : '') + ' style="width:18px;height:18px;"></td>').join('') + '</tr>').join('')
+    : '<tr><td colspan="7" style="padding:14px; color:#6B7280;">尚無管理者，請由下方搜尋加入。</td></tr>');
+  t.querySelectorAll('.perm-cb').forEach(cb => cb.addEventListener('change', async () => {
+    cb.disabled = true;
+    try {
+      await callApi('perms_set', { user_id: cb.closest('tr').dataset.uid, key: cb.dataset.key, enabled: cb.checked });
+      permsMsg('已更新');
+    } catch (err) { cb.checked = !cb.checked; permsMsg('更新失敗：' + err.message, true); }
+    cb.disabled = false;
+  }));
+
+  const teams = document.getElementById('perms-teams');
+  teams.innerHTML = Object.keys(PERM_TEAM_LABELS).map(k => '<label style="display:flex; align-items:center; gap:5px; font-size:13.5px;"><input type="checkbox" class="perm-team-cb" value="' + k + '" ' + (r.teams.includes(k) ? 'checked' : '') + (r.team_table_ok ? '' : ' disabled') + '> ' + PERM_TEAM_LABELS[k] + '</label>').join('') +
+    (r.team_table_ok ? '' : '<span style="font-size:12.5px; color:#B91C1C;">請先執行 SQL/53-altar-manager-teams.sql（目前使用預設：佛堂、庶務、住壇）</span>');
+  teams.querySelectorAll('.perm-team-cb').forEach(cb => cb.addEventListener('change', async () => {
+    cb.disabled = true;
+    try { await callApi('perms_set_team', { team: cb.value, enabled: cb.checked }); permsMsg('已更新'); loadPerms(); }
+    catch (err) { cb.checked = !cb.checked; permsMsg('更新失敗：' + err.message, true); }
+    cb.disabled = false;
+  }));
+  document.getElementById('perms-leaders').innerHTML = r.leaders.length
+    ? '目前自動管理活動的組長：<br>' + r.leaders.map(l => '・' + escapeHtml(l.name) + '（' + escapeHtml(l.altar) + '・' + (PERM_TEAM_LABELS[l.team] || l.team) + '組長）').join('<br>')
+    : '目前沒有符合的組長。';
+}
+let permsDebounce = null;
+document.getElementById('perms-search').addEventListener('input', (e) => {
+  clearTimeout(permsDebounce);
+  const q = e.target.value.trim();
+  permsDebounce = setTimeout(async () => {
+    const el = document.getElementById('perms-results');
+    if (!q) { el.innerHTML = ''; return; }
+    try {
+      const { users } = await callApi('perms_search_users', { query: q });
+      el.innerHTML = users.length ? users.map(u => '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid #F0F1F3;"><span>' + escapeHtml(u.display_name || '—') + '</span><button type="button" class="btn-text perm-add" data-id="' + u.id + '">加入列表</button></div>').join('')
+        : '<div style="color:#6B7280; font-size:12.5px; padding:8px 4px;">找不到符合的人員（對方須先用 LINE 開啟過任一頁面連結一次）。</div>';
+      el.querySelectorAll('.perm-add').forEach(b => b.addEventListener('click', () => {
+        permsExtra.push(b.dataset.id);
+        document.getElementById('perms-search').value = ''; el.innerHTML = '';
+        loadPerms();
+      }));
+    } catch (err) { el.innerHTML = '<div style="color:#B91C1C; font-size:12.5px;">' + escapeHtml(err.message) + '</div>'; }
+  }, 300);
+});
+document.getElementById('open-perms-btn').addEventListener('click', openPerms);
+document.getElementById('perms-back-btn').addEventListener('click', (e) => { e.preventDefault(); showScreen('main'); });
 document.getElementById('assign-back-btn').addEventListener('click', (e) => { e.preventDefault(); showScreen('main'); });
 
 document.getElementById('new-job-btn').addEventListener('click', () => openForm(null));
@@ -817,6 +922,8 @@ function openForm(tpl) {
   renderSubtaskList(tpl ? tpl.subtasks : []);
 
   const checkedGroupIds = new Set(tpl ? (tpl.group_ids || []) : []);
+  // 組長新增工作：只有一個可選群組時直接預先勾選
+  if (!tpl && !isGlobalAdmin && allGroups.length === 1) checkedGroupIds.add(allGroups[0].id);
   renderGroupChips(checkedGroupIds);
 
   renderPresetSelect();
@@ -876,8 +983,8 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     recurrence,
     recurrence_detail,
     place: document.getElementById('f-place').value.trim() || null,
-    is_featured: document.getElementById('f-featured').checked,
-    altar_id: altarValueForSave(),
+    is_featured: isGlobalAdmin ? document.getElementById('f-featured').checked : undefined,
+    altar_id: isGlobalAdmin ? altarValueForSave() : undefined,
     start_date, end_date,
     subtasks, group_ids,
   };
