@@ -892,6 +892,7 @@ async function initLiff() {
     await withTimeout(loadExistingRegistration(), 10000, 'loadExistingRegistration()');
     showScreen('form');
   } catch (err) {
+    if (err && err.handled) return;   // 已顯示「不在適用範圍」畫面
     console.error('LIFF init failed:', err);
     const msg = (err && err.message) ? err.message : '';
     if (/access token expired/i.test(msg)) {
@@ -915,8 +916,16 @@ document.getElementById('relogin-btn').addEventListener('click', () => {
 });
 
 async function loadExistingRegistration() {
-  const { user, registrations } = await callApi('get_my_data', { event_id: currentEventId });
+  const { user, registrations, can_register } = await callApi('get_my_data', { event_id: currentEventId });
   existingRegistrations = registrations || [];
+
+  // 活動限定壇／群組：不在適用範圍、也沒有既有報名 → 直接擋下
+  if (can_register === false && existingRegistrations.length === 0) {
+    document.getElementById('error-message').textContent = '此活動僅開放特定壇／群組的成員報名，\n您的帳號不在適用範圍內。\n如有疑問請聯繫主辦單位。';
+    document.getElementById('relogin-btn').style.display = 'none';
+    showScreen('error');
+    throw Object.assign(new Error('not_eligible'), { handled: true });
+  }
 
   if (user) {
     document.getElementById('input-email').value = user.email || '';

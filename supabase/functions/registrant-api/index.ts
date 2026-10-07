@@ -60,6 +60,35 @@ async function verifyLineToken(idToken: string) {
   return data as { sub: string; name?: string; picture?: string };
 }
 
+// Who may REGISTER for an event — the same rule that decides whether it is
+// listed on Home / the calendar (home-api, calendar-api):
+//   1) the member is on a team of the event's 所屬壇 or of an altar under it
+//   2) OR the event has no 適用群組 (public)
+//   3) OR the member belongs to one of its 適用群組
+// Global event admins (event_admins) always pass so they can preview/test.
+async function canRegisterFor(eventId: string, userId: string | null): Promise<boolean> {
+  const { data: ev } = await supabase.from("events").select("altar_id").eq("id", eventId).maybeSingle();
+  if (!ev) return false;
+  const { data: links } = await supabase.from("event_groups").select("group_id").eq("event_id", eventId);
+  const groupIds = (links || []).map((l: any) => l.group_id);
+  if (groupIds.length === 0 && !ev.altar_id) return true;      // fully public
+  if (userId) {
+    if (ev.altar_id) {
+      const { data: vis, error } = await supabase.rpc("is_altar_visible_to_user", { p_altar_id: ev.altar_id, p_user_id: userId });
+      if (!error && vis) return true;
+    }
+    if (groupIds.length > 0) {
+      const { data: mem } = await supabase.from("task_group_members").select("group_id").eq("user_id", userId).in("group_id", groupIds);
+      if (mem && mem.length > 0) return true;
+    }
+    const { data: adm } = await supabase.from("event_admins").select("user_id").eq("user_id", userId).maybeSingle();
+    if (adm) return true;
+  }
+  return groupIds.length === 0;                                 // altar set but no groups → public (same as the listing rule)
+}
+
+const NOT_ELIGIBLE_MSG = "此活動僅開放特定壇／群組的成員報名，您的帳號不在適用範圍內。如有疑問請聯繫主辦單位。";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -97,7 +126,8 @@ serve(async (req) => {
             .order("created_at", { ascending: true });
           registrations = data || [];
         }
-        return json({ user: existingUser || null, registrations });
+        const can_register = event_id ? await canRegisterFor(event_id, existingUser ? existingUser.id : null) : true;
+        return json({ user: existingUser || null, registrations, can_register });
       }
 
       // ---- Register one or more attendees for one event in a single call ----
@@ -108,6 +138,9 @@ serve(async (req) => {
         const { display_name, phone, email, event_id, attendees } = body;
 
         if (!event_id) return json({ error: "Missing event_id." }, 400);
+        if (!(await canRegisterFor(event_id, existingUser ? existingUser.id : null))) {
+          return json({ error: NOT_ELIGIBLE_MSG, code: "not_eligible" }, 403);
+        }
         if (!Array.isArray(attendees) || attendees.length === 0) {
           return json({ error: "Missing attendees." }, 400);
         }
