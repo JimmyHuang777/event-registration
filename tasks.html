@@ -57,6 +57,7 @@
   .subtask-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 6px 0; font-size: 13px; }
   .subtask-row .subtask-title { flex: 1 1 auto; min-width: 40%; }
   .subtask-row .subtask-title.done { text-decoration: line-through; color: var(--ink-soft); }
+  .subtask-meta { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; color: var(--ink-soft); line-height: 1.5; }
   .subtask-row .subtask-by { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
   .subtask-actions { display: flex; gap: 6px; align-items: center; margin-left: auto; }
   .subtask-take-btn {
@@ -186,6 +187,16 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// 子項目補充資訊（檢核表格式）：時間／地點／負責人／檢核人
+function subtaskTitleHTML(s) {
+  const bits = [];
+  if (s.time_label) bits.push('🕒 ' + escapeHtml(s.time_label));
+  if (s.place) bits.push('📍 ' + escapeHtml(s.place));
+  if (s.owner_note) bits.push('負責：' + escapeHtml(s.owner_note));
+  if (s.checker) bits.push('檢核：' + escapeHtml(s.checker));
+  return escapeHtml(s.title) + (bits.length ? '<small class="subtask-meta">' + bits.join('　') + '</small>' : '');
 }
 
 async function callApi(action, extra = {}) {
@@ -331,7 +342,7 @@ function subtaskListHTML(t, mode) {
           if (s.status === 'taken') {
             return `
               <div class="subtask-row">
-                <span class="subtask-title">${escapeHtml(s.title)}</span>
+                <span class="subtask-title">${subtaskTitleHTML(s)}</span>
                 <div class="subtask-actions">
                   <button type="button" class="subtask-complete-btn" data-action="complete-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">已完成</button>
                   <button type="button" class="subtask-give-up-btn" data-action="release-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">放棄</button>
@@ -341,7 +352,7 @@ function subtaskListHTML(t, mode) {
           // completed
           return `
             <div class="subtask-row">
-              <span class="subtask-title done">${escapeHtml(s.title)}</span>
+              <span class="subtask-title done">${subtaskTitleHTML(s)}</span>
               <div class="subtask-actions">
                 ${statusBadgeHTML('completed')}
                 <button type="button" class="subtask-undo-btn" data-action="undo-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">復原 Undo</button>
@@ -353,7 +364,7 @@ function subtaskListHTML(t, mode) {
         if (s.status === 'unassigned' || s.status === 'incomplete') {
           return `
             <div class="subtask-row">
-              <span class="subtask-title">${escapeHtml(s.title)}</span>
+              <span class="subtask-title">${subtaskTitleHTML(s)}</span>
               <div class="subtask-actions">
                 ${s.filled ? `<span class="subtask-by">${escapeHtml(s.assigned_name || '')}${subtaskCountHTML(s)}</span>` : (s.slots > 1 ? `<span class="subtask-by">${subtaskCountHTML(s)}</span>` : statusBadgeHTML(s.status))}
                 <button type="button" class="subtask-take-btn" data-action="claim-subtask" data-instance-id="${iid}" data-subtask-id="${sid}">認領 Take</button>
@@ -362,7 +373,7 @@ function subtaskListHTML(t, mode) {
         }
         return `
           <div class="subtask-row">
-            <span class="subtask-title ${s.status === 'completed' ? 'done' : ''}">${escapeHtml(s.title)}</span>
+            <span class="subtask-title ${s.status === 'completed' ? 'done' : ''}">${subtaskTitleHTML(s)}</span>
             <div class="subtask-actions">
               ${statusBadgeHTML(s.status)}
               <span class="subtask-by">${escapeHtml(s.assigned_to_me && !(s.slots > 1) ? '你' : (s.assigned_name || '—'))}${subtaskCountHTML(s)}</span>

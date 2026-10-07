@@ -295,7 +295,7 @@ serve(async (req) => {
         const tplIds = [...new Set(active.map((i: any) => i.template_id))];
         const instIds = active.map((i: any) => i.id);
         const { data: subs } = await supabase
-          .from("task_subtask_templates").select("id, template_id, title, sort_order, section, slots")
+          .from("task_subtask_templates").select("id, template_id, title, sort_order, section, slots, time_label, place, owner_note, checker")
           .in("template_id", tplIds).order("sort_order", { ascending: true });
         const { data: comps } = await supabase
           .from("task_subtask_completions")
@@ -318,6 +318,10 @@ serve(async (req) => {
                 subtask_template_id: x.id,
                 title: x.title,
                 section: x.section || null,
+                time_label: x.time_label || null,
+                place: x.place || null,
+                owner_note: x.owner_note || null,
+                checker: x.checker || null,
                 slots: Math.max(1, x.slots || 1),
                 people,
               };
@@ -410,7 +414,7 @@ serve(async (req) => {
         if (templateIds.length > 0) {
           const { data: subs, error: subsErr } = await supabase
             .from("task_subtask_templates")
-            .select("id, template_id, title, sort_order, section, slots")
+            .select("id, template_id, title, sort_order, section, slots, time_label, place, owner_note, checker")
             .in("template_id", templateIds)
             .order("sort_order", { ascending: true });
           if (subsErr) return json({ error: subsErr.message }, 400);
@@ -528,6 +532,10 @@ serve(async (req) => {
             title: ((s && s.title) || "").trim(),
             section: ((s && s.section) || "").trim().slice(0, 60) || null,
             slots: Math.max(1, Math.min(50, parseInt(String(s && s.slots), 10) || 1)),
+            time_label: ((s && s.time_label) || "").trim().slice(0, 40) || null,
+            place: ((s && s.place) || "").trim().slice(0, 60) || null,
+            owner_note: ((s && s.owner_note) || "").trim().slice(0, 80) || null,
+            checker: ((s && s.checker) || "").trim().slice(0, 80) || null,
             sort_order: idx,
           }))
           .filter((r: any) => r.title);
@@ -545,9 +553,9 @@ serve(async (req) => {
         }
         for (const row of rows) {
           if (row.id) {
-            await supabase.from("task_subtask_templates").update({ title: row.title, section: row.section, slots: row.slots, sort_order: row.sort_order }).eq("id", row.id);
+            await supabase.from("task_subtask_templates").update({ title: row.title, section: row.section, slots: row.slots, time_label: row.time_label, place: row.place, owner_note: row.owner_note, checker: row.checker, sort_order: row.sort_order }).eq("id", row.id);
           } else {
-            await supabase.from("task_subtask_templates").insert({ template_id: templateId, title: row.title, section: row.section, slots: row.slots, sort_order: row.sort_order });
+            await supabase.from("task_subtask_templates").insert({ template_id: templateId, title: row.title, section: row.section, slots: row.slots, time_label: row.time_label, place: row.place, owner_note: row.owner_note, checker: row.checker, sort_order: row.sort_order });
           }
         }
 
@@ -619,7 +627,11 @@ serve(async (req) => {
           start_date: start_date || null,
           end_date: end_date || null,
           subtasks: (Array.isArray(subtasks) ? subtasks : [])
-            .map((s: any) => ({ title: ((s && s.title) || "").trim(), section: ((s && s.section) || "").trim().slice(0, 60) || null, slots: Math.max(1, Math.min(50, parseInt(String(s && s.slots), 10) || 1)) }))
+            .map((s: any) => ({ title: ((s && s.title) || "").trim(), section: ((s && s.section) || "").trim().slice(0, 60) || null, slots: Math.max(1, Math.min(50, parseInt(String(s && s.slots), 10) || 1)),
+              time_label: ((s && s.time_label) || "").trim().slice(0, 40) || null,
+              place: ((s && s.place) || "").trim().slice(0, 60) || null,
+              owner_note: ((s && s.owner_note) || "").trim().slice(0, 80) || null,
+              checker: ((s && s.checker) || "").trim().slice(0, 80) || null }))
             .filter((s: any) => s.title),
           group_ids: Array.isArray(group_ids) ? group_ids : [],
           updated_at: new Date().toISOString(),

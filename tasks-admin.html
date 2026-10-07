@@ -93,7 +93,7 @@
 
   .empty-note { text-align: center; color: var(--ink-soft); font-size: 13.5px; padding: 30px 10px; }
 
-
+  
 /* ---------- Form ---------- */
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
@@ -105,7 +105,9 @@
   .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--line-green); }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-  .subtask-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .subtask-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .subtask-row .sb-extra { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .subtask-row .sb-extra input { min-width: 0; font-size: 13px; padding: 6px 8px; }
   .subtask-row.is-item.in-section { margin-left: 14px; }
   .section-row { display: flex; gap: 8px; align-items: center; margin: 16px 0 8px; padding: 8px; background: #E7F8EE; border-left: 4px solid #06C755; border-radius: 10px; }
   .section-row input { flex: 1; font-size: 17px; font-weight: 800; color: #067A37; }
@@ -621,7 +623,7 @@ function renderAssignList() {
         (p.status === 'taken' ? '<button type="button" class="asg-x" data-act="unassign" data-comp="' + p.completion_id + '" title="取消指派">✕</button>' : '') + '</span>').join('');
       const open = (s.people || []).length < s.slots;
       return sec + '<div class="asg-row" data-instance="' + inst.instance_id + '" data-sub="' + s.subtask_template_id + '">' +
-        '<span class="t">' + escapeHtml(s.title) + '</span>' +
+        '<span class="t">' + escapeHtml(s.title) + (function () { const b = []; if (s.time_label) b.push('🕒 ' + s.time_label); if (s.place) b.push('📍 ' + s.place); if (s.owner_note) b.push('負責：' + s.owner_note); if (s.checker) b.push('檢核：' + s.checker); return b.length ? '<small style="display:block;font-weight:400;font-size:11.5px;color:var(--ink-soft);">' + escapeHtml(b.join('　')) + '</small>' : ''; })() + '</span>' +
         '<span class="asg-count' + (open ? '' : ' full') + '">' + (s.people || []).length + '/' + s.slots + '</span>' +
         '<div class="asg-people">' + people + (open ? '<button type="button" class="asg-add" data-act="assign">＋ 指派</button>' : '') + '</div></div>';
     }).join('');
@@ -777,6 +779,12 @@ function addSubtaskRow(prefill, afterEl) {
     <input type="text" class="sb-title" placeholder="例：關閉電燈" value="${prefill ? escapeHtml(prefill.title || '') : ''}">
     <span class="slots-wrap" title="這個子項目需要幾位負責人"><input type="number" class="sb-slots" min="1" max="50" inputmode="numeric" value="${prefill && prefill.slots ? prefill.slots : 1}">人</span>
     <button type="button" class="remove-btn">✕</button>
+    <div class="sb-extra">
+      <input type="text" class="sb-time" placeholder="時間（例：一周前、07:00）" value="${prefill ? escapeHtml(prefill.time_label || '') : ''}">
+      <input type="text" class="sb-place" placeholder="地點" value="${prefill ? escapeHtml(prefill.place || '') : ''}">
+      <input type="text" class="sb-owner" placeholder="負責人" value="${prefill ? escapeHtml(prefill.owner_note || '') : ''}">
+      <input type="text" class="sb-checker" placeholder="檢核人" value="${prefill ? escapeHtml(prefill.checker || '') : ''}">
+    </div>
   `;
   const list = document.getElementById('subtask-list');
   if (afterEl) afterEl.insertAdjacentElement('afterend', wrap); else list.appendChild(wrap);
@@ -835,7 +843,7 @@ function collectSubtasks() {
       section = el.querySelector('.sec-title').value.trim() || null;
     } else {
       const title = el.querySelector('.sb-title').value.trim();
-      if (title) out.push({ id: el.dataset.subtaskId || null, title, section, slots: Math.max(1, Math.min(50, parseInt(el.querySelector('.sb-slots').value, 10) || 1)) });
+      if (title) out.push({ id: el.dataset.subtaskId || null, title, section, slots: Math.max(1, Math.min(50, parseInt(el.querySelector('.sb-slots').value, 10) || 1)), time_label: el.querySelector('.sb-time').value.trim() || null, place: el.querySelector('.sb-place').value.trim() || null, owner_note: el.querySelector('.sb-owner').value.trim() || null, checker: el.querySelector('.sb-checker').value.trim() || null });
     }
   });
   return out;
@@ -1027,7 +1035,7 @@ document.getElementById('preset-apply-btn').addEventListener('click', () => {
     document.getElementById('f-start-date').value = preset.start_date || '';
     document.getElementById('f-end-date').value = preset.end_date || '';
   }
-  renderSubtaskList((preset.subtasks || []).map(s => ({ title: s.title, section: s.section, slots: s.slots })));
+  renderSubtaskList((preset.subtasks || []).map(s => ({ title: s.title, section: s.section, slots: s.slots, time_label: s.time_label, place: s.place, owner_note: s.owner_note, checker: s.checker })));
   const presetGroupIds = new Set((preset.group_ids || []).filter(id => allGroups.some(g => g.id === id)));
   renderGroupChips(presetGroupIds);
 });
@@ -1061,7 +1069,7 @@ document.getElementById('save-preset-btn').addEventListener('click', async () =>
   const start_date = recurrence !== 'once' ? (document.getElementById('f-start-date').value || null) : null;
   const end_date = recurrence !== 'once' ? (document.getElementById('f-end-date').value || null) : null;
 
-  const subtasks = collectSubtasks().map(({ title, section, slots }) => ({ title, section, slots }));
+  const subtasks = collectSubtasks().map(({ title, section, slots, time_label, place, owner_note, checker }) => ({ title, section, slots, time_label, place, owner_note, checker }));
 
   const group_ids = [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value);
 
