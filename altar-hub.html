@@ -114,6 +114,23 @@
   .subtask-take-btn { background: var(--line-green); color: white; border: none; border-radius: 12px; padding: 5px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
   .subtask-complete-btn { background: var(--ink); color: white; border: none; border-radius: 12px; padding: 5px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
   .subtask-give-up-btn { background: none; border: 1.5px solid #F3D4D1; color: var(--error); border-radius: 12px; padding: 4px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  /* ---- 壇各組：成員／工作細則／交接／對調 ---- */
+  .ts-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .ts-row img { width:34px; height:34px; border-radius:50%; background:var(--line); object-fit:cover; flex:none; }
+  .ts-row .grow { flex:1; min-width:0; }
+  .ts-w6 { border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .ts-w6 .when { font-size:13px; font-weight:800; color:var(--line-green-dark); background:#E4F8EC; border-radius:6px; padding:3px 9px; display:inline-block; margin-bottom:8px; white-space:pre-wrap; }
+  .ts-w6 dl { margin:0; }
+  .ts-w6 dt { font-size:11.5px; font-weight:700; color:var(--ink-soft); margin-top:8px; }
+  .ts-w6 dd { margin:2px 0 0; font-size:13.5px; line-height:1.55; white-space:pre-wrap; }
+  .ts-edit-row { border:1.5px dashed var(--line); border-radius:12px; padding:10px; margin-bottom:10px; }
+  .ts-edit-row .field { margin-bottom:8px; }
+  .ts-edit-row textarea { min-height:60px; }
+  .ts-check { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .ts-check input[type=checkbox] { width:20px; height:20px; margin-top:2px; flex:none; }
+  .ts-check.done .t { text-decoration:line-through; color:var(--ink-soft); }
+  .ts-check .t { font-size:14px; font-weight:600; }
+  .ts-check .n { font-size:12px; color:var(--ink-soft); line-height:1.5; white-space:pre-wrap; }
   .subtask-undo-btn { background: none; border: 1.5px solid var(--line); color: var(--ink-soft); border-radius: 12px; padding: 4px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
 </style>
 </head>
@@ -196,6 +213,22 @@
       <div class="titles"><h1>✅ 工作 Tasks</h1></div>
     </div>
     <div class="content" id="kitchen-tasks-content"></div>
+  </div>
+
+  <div id="team-home-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="team-home-back-btn">‹</button>
+      <div class="titles"><h1 id="team-home-title">—</h1><p id="team-home-role"></p></div>
+    </div>
+    <div class="menu-list" id="team-home-list"></div>
+  </div>
+
+  <div id="team-sub-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="team-sub-back-btn">‹</button>
+      <div class="titles"><h1 id="team-sub-title">—</h1><p id="team-sub-sub"></p></div>
+    </div>
+    <div class="content" id="team-sub-content"></div>
   </div>
 
   <div id="team-tasks-screen" class="board-screen">
@@ -323,7 +356,7 @@ function renderHub() {
     `;
     card.addEventListener('click', () => {
       if (t.key === 'kitchen') { openKitchenHome(); }
-      else { openTeamTasks(t.key); }
+      else { openTeamHome(t.key); }
     });
     listEl.appendChild(card);
   });
@@ -338,7 +371,7 @@ function openKitchenHome() {
     { key: 'menus', title: '📋 菜單 Menus', desc: '查看每日菜單' + (kitchenRole === 'leader' ? '，並可新增／編輯' : ''), color: '#2563A8' },
     { key: 'recipes', title: '📖 食譜 Recipes', desc: '查看食譜庫' + (kitchenRole === 'leader' ? '，並可新增／編輯' : ''), color: '#6B5FB4' },
     { key: 'tasks', title: '✅ 工作 Tasks', desc: kitchenRole === 'leader' ? '指派與追蹤備料／烹煮工作' : '認領尚未分配的工作', color: '#D97706' },
-  ];
+  ].concat(tsExtraItems('kitchen', kitchenRole === 'leader'));
   listEl.innerHTML = '';
   items.forEach(r => {
     const card = document.createElement('button');
@@ -353,6 +386,7 @@ function openKitchenHome() {
       if (r.key === 'menus') { showScreen('menus'); loadMenus(); }
       else if (r.key === 'recipes') { showScreen('recipes'); loadRecipes(); }
       else if (r.key === 'tasks') { showScreen('kitchen-tasks'); loadKitchenTasks(); }
+      else if (r.key.indexOf('ts-') === 0) { tsOpen('kitchen', r.key); }
     });
     listEl.appendChild(card);
   });
@@ -666,7 +700,7 @@ function openTeamTasks(team) {
   loadTeamTasks();
 }
 
-document.getElementById('team-tasks-back-btn').addEventListener('click', () => { showScreen('hub'); renderHub(); });
+document.getElementById('team-tasks-back-btn').addEventListener('click', () => openTeamHome(teamTasksTeam));
 
 document.querySelectorAll('#team-tasks-screen .tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -909,6 +943,268 @@ async function initLiff() {
 document.getElementById('relogin-btn').addEventListener('click', () => { try { liff.logout(); } catch (e) {} window.location.reload(); });
 
 initLiff();
+
+/* ================= 壇各組：成員／工作細則／交接／對調 ================= */
+
+const TEAM_API_URL = 'https://ixzvbyxhzttvnheivsoc.functions.supabase.co/altar-team-api';
+const TS_LABEL = { kitchen: { icon: '🍚', title: '天廚' }, shrine: { icon: '🙏', title: '佛堂' }, general: { icon: '🧹', title: '庶務' }, resident: { icon: '🏠', title: '住壇' } };
+const TS_TEAMS = ['kitchen', 'shrine', 'general', 'resident'];
+let tsBack = null;
+
+async function callTeamApi(action, extra) {
+  const res = await fetch(TEAM_API_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action, idToken, altar_id: currentAltar && currentAltar.id }, extra || {})),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+const nl2 = (t) => escapeHtml(t || '');
+
+function tsExtraItems(team, isLeader) {
+  const items = [
+    { key: 'ts-members', title: '👥 成員 Members', desc: '組長與組員名單' + (isLeader ? '，可新增／移除組員' : ''), color: '#0E7490' },
+    { key: 'ts-rules', title: '📘 工作細則 Rules', desc: '各工作項目的 6W 簡流表' + (isLeader ? '，可新增／編輯' : ''), color: '#7C3AED' },
+    { key: 'ts-handover', title: '🔁 交接項目 Handover', desc: '換組時逐項確認交接' + (isLeader ? '（組長確認）' : ''), color: '#B45309' },
+  ];
+  if (isLeader) items.push({ key: 'ts-swap', title: '🔄 組別對調 Swap', desc: '與其他組整組對調，需對方組長同意', color: '#DC2626' });
+  return items;
+}
+
+async function openTeamHome(team) {
+  const lab = TS_LABEL[team];
+  document.getElementById('team-home-title').textContent = lab.icon + ' ' + lab.title;
+  document.getElementById('team-home-role').textContent = '載入中…';
+  document.getElementById('team-home-list').innerHTML = '';
+  showScreen('team-home');
+  let isLeader = false;
+  try {
+    const ov = await callTeamApi('overview');
+    const mine = (ov.teams || []).find(t => t.team === team);
+    isLeader = !!mine && mine.role === 'leader';
+    document.getElementById('team-home-role').textContent = mine ? (isLeader ? '組長 Leader' : '組員 Member') : '';
+  } catch (e) { document.getElementById('team-home-role').textContent = ''; }
+  const items = [{ key: 'tasks', title: '✅ 工作 Tasks', desc: '查看並認領' + lab.title + '工作', color: '#2563A8' }].concat(tsExtraItems(team, isLeader));
+  const listEl = document.getElementById('team-home-list');
+  listEl.innerHTML = '';
+  items.forEach(r => {
+    const card = document.createElement('button');
+    card.type = 'button'; card.className = 'menu-card';
+    card.innerHTML = `<div class="menu-icon" style="background:${r.color};">${r.title.split(' ')[0]}</div><div class="menu-body"><div class="title">${r.title.slice(r.title.indexOf(' ') + 1)}</div><div class="desc">${r.desc}</div></div><div class="menu-arrow">›</div>`;
+    card.addEventListener('click', () => { if (r.key === 'tasks') openTeamTasks(team); else tsOpen(team, r.key); });
+    listEl.appendChild(card);
+  });
+}
+document.getElementById('team-home-back-btn').addEventListener('click', () => { showScreen('hub'); renderHub(); });
+document.getElementById('team-sub-back-btn').addEventListener('click', () => { if (tsBack) tsBack(); });
+
+function tsHomeBack(team) { return () => { if (team === 'kitchen') openKitchenHome(); else openTeamHome(team); }; }
+function tsShow(title, sub, back) {
+  document.getElementById('team-sub-title').textContent = title;
+  document.getElementById('team-sub-sub').textContent = sub || '';
+  tsBack = back;
+  showScreen('team-sub');
+  return document.getElementById('team-sub-content');
+}
+function tsOpen(team, key) {
+  if (key === 'ts-members') tsMembers(team);
+  else if (key === 'ts-rules') tsRules(team);
+  else if (key === 'ts-handover') tsHandover(team);
+  else if (key === 'ts-swap') tsSwap(team);
+}
+const tsTitle = (team, t) => TS_LABEL[team].icon + ' ' + TS_LABEL[team].title + '・' + t;
+
+/* ---- 成員 ---- */
+async function tsMembers(team) {
+  const el = tsShow(tsTitle(team, '成員'), currentAltar.name, tsHomeBack(team));
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { members, can_manage, is_global } = await callTeamApi('members_list', { team });
+    let html = '';
+    if (can_manage) {
+      html += '<div class="section-title">新增組員</div><div class="field" style="margin-bottom:6px;"><input type="text" id="ts-search" placeholder="輸入姓名搜尋（對方須先用 LINE 開啟過任一頁面）"></div><div id="ts-results"></div>';
+    }
+    html += '<div class="section-title">名單（' + members.length + ' 人）</div>';
+    html += members.length ? members.map(m => `<div class="ts-row"><img src="${escapeHtml(m.picture || '')}" alt=""><div class="grow">${escapeHtml(m.name)}</div>` +
+      `<span class="role-badge" style="${m.role === 'leader' ? '' : 'background:var(--canvas);color:var(--ink-soft);'}">${m.role === 'leader' ? '組長' : '組員'}</span>` +
+      (can_manage && (m.role !== 'leader' || is_global) ? `<button type="button" class="btn-text danger" data-ts-rm="${m.user_id}">移除</button>` : '') + '</div>').join('') : '<div class="empty-note">尚無人員。</div>';
+    if (can_manage && !is_global) html += '<p class="card-meta">組長身分由管理員指定；組長可新增、移除組員。</p>';
+    el.innerHTML = html;
+    el.querySelectorAll('[data-ts-rm]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('確定要將此人移出這一組嗎？')) return;
+      try { await callTeamApi('member_remove', { team, user_id: b.dataset.tsRm }); tsMembers(team); } catch (e) { alert(e.message); }
+    }));
+    const se = document.getElementById('ts-search');
+    if (se) {
+      let tm = null;
+      se.addEventListener('input', () => {
+        clearTimeout(tm);
+        tm = setTimeout(async () => {
+          const q = se.value.trim(); const box = document.getElementById('ts-results');
+          if (!q) { box.innerHTML = ''; return; }
+          try {
+            const { users } = await callTeamApi('members_search', { q });
+            box.innerHTML = users.length ? users.map(u => `<div class="ts-row"><div class="grow">${escapeHtml(u.display_name || '—')}</div>` +
+              `<button type="button" class="btn-text primary" data-ts-add="${u.id}" data-role="member">加入組員</button>` +
+              (is_global ? `<button type="button" class="btn-text" data-ts-add="${u.id}" data-role="leader">設為組長</button>` : '') + '</div>').join('') : '<div class="empty-note">找不到符合的人員。</div>';
+            box.querySelectorAll('[data-ts-add]').forEach(b => b.addEventListener('click', async () => {
+              b.disabled = true;
+              try { await callTeamApi('member_add', { team, user_id: b.dataset.tsAdd, role: b.dataset.role }); tsMembers(team); } catch (e) { alert(e.message); b.disabled = false; }
+            }));
+          } catch (e) { box.innerHTML = '<div class="empty-note">' + escapeHtml(e.message) + '</div>'; }
+        }, 300);
+      });
+    }
+  } catch (e) { el.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>'; }
+}
+
+/* ---- 工作細則（6W 簡流表） ---- */
+const W6_FIELDS = [['what_text', '事（What）'], ['who_text', '人（Who）'], ['where_text', '地（Where）'], ['how_text', '物（How）'], ['why_text', '備註（Why）']];
+async function tsRules(team) {
+  const el = tsShow(tsTitle(team, '工作細則'), currentAltar.name, tsHomeBack(team));
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { rules, can_manage } = await callTeamApi('rules_list', { team });
+    let html = can_manage ? '<button type="button" class="submit-btn" id="ts-rule-add" style="width:100%; margin:4px 0 14px;">＋ 新增工作細則</button>' : '';
+    html += rules.length ? rules.map(r => `<button type="button" class="menu-card" data-ts-rule="${r.id}" style="margin-bottom:10px;"><div class="menu-body"><div class="title">${escapeHtml(r.title)}</div><div class="desc">${r.rows.length} 個階段${r.owners ? '・' + escapeHtml(r.owners) : ''}</div></div><div class="menu-arrow">›</div></button>`).join('') : '<div class="empty-state">尚未建立工作細則。' + (can_manage ? '' : '請組長新增。') + '</div>';
+    el.innerHTML = html;
+    const add = document.getElementById('ts-rule-add');
+    if (add) add.addEventListener('click', () => tsRuleForm(team, null));
+    el.querySelectorAll('[data-ts-rule]').forEach(b => b.addEventListener('click', () => tsRuleView(team, rules.find(r => r.id === b.dataset.tsRule), can_manage)));
+  } catch (e) { el.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>'; }
+}
+function tsRuleView(team, rule, canManage) {
+  const el = tsShow(rule.title, tsTitle(team, '工作細則'), () => tsRules(team));
+  let html = rule.owners ? '<p class="card-meta" style="margin:0 0 10px;">負責人：' + escapeHtml(rule.owners) + '</p>' : '';
+  html += rule.rows.map(r => `<div class="ts-w6">${r.when_text ? '<div class="when">' + nl2(r.when_text) + '</div>' : ''}<dl>` +
+    W6_FIELDS.map(([k, l]) => r[k] ? `<dt>${l}</dt><dd>${nl2(r[k])}</dd>` : '').join('') + '</dl></div>').join('') || '<div class="empty-note">尚無內容。</div>';
+  if (canManage) html += '<div class="card-actions"><button type="button" class="btn-text primary" id="ts-rule-edit">編輯</button><button type="button" class="btn-text danger" id="ts-rule-del">刪除</button></div>';
+  el.innerHTML = html;
+  if (canManage) {
+    document.getElementById('ts-rule-edit').addEventListener('click', () => tsRuleForm(team, rule));
+    document.getElementById('ts-rule-del').addEventListener('click', async () => {
+      if (!confirm('確定要刪除「' + rule.title + '」嗎？')) return;
+      try { await callTeamApi('rule_delete', { id: rule.id }); tsRules(team); } catch (e) { alert(e.message); }
+    });
+  }
+}
+function tsRuleRowHTML(r) {
+  r = r || {};
+  const ta = (k, l, v) => `<div class="field"><label>${l}</label><textarea data-k="${k}">${escapeHtml(v || '')}</textarea></div>`;
+  return `<div class="ts-edit-row">
+    <div class="field"><label>時（When）<span class="hint">例：事前 06:00／事中／事後</span></label><input type="text" data-k="when_text" value="${escapeHtml(String(r.when_text || '').replace(/\s*\n\s*/g, ' '))}"></div>
+    ${ta('what_text', '事（What）', r.what_text)}
+    <div class="field"><label>人（Who）</label><input type="text" data-k="who_text" value="${escapeHtml(r.who_text || '')}"></div>
+    <div class="field"><label>地（Where）</label><input type="text" data-k="where_text" value="${escapeHtml(r.where_text || '')}"></div>
+    ${ta('how_text', '物（How）', r.how_text)}
+    ${ta('why_text', '備註（Why）', r.why_text)}
+    <button type="button" class="btn-text danger" data-ts-delrow>刪除此列</button></div>`;
+}
+function tsRuleForm(team, rule) {
+  const el = tsShow(rule ? '編輯工作細則' : '新增工作細則', tsTitle(team, '工作細則'), () => (rule ? tsRuleView(team, rule, true) : tsRules(team)));
+  el.innerHTML = `<div class="field"><label>工作項目名稱</label><input type="text" id="tsr-title" placeholder="例：點傳師接待" value="${escapeHtml(rule ? rule.title : '')}"></div>
+    <div class="field"><label>負責人 <span class="hint">選填，例：林璟瑞／顏浚安</span></label><input type="text" id="tsr-owners" value="${escapeHtml(rule && rule.owners ? rule.owners : '')}"></div>
+    <div class="section-title">簡流表（每列一個階段）</div><div id="tsr-rows">${(rule && rule.rows.length ? rule.rows : [{}]).map(tsRuleRowHTML).join('')}</div>
+    <button type="button" class="btn-text" id="tsr-addrow">＋ 新增一列</button>
+    <p class="modal-error" id="tsr-error"></p>
+    <button type="button" class="submit-btn" id="tsr-save" style="width:100%;">儲存 Save</button>`;
+  const rowsEl = document.getElementById('tsr-rows');
+  document.getElementById('tsr-addrow').addEventListener('click', () => rowsEl.insertAdjacentHTML('beforeend', tsRuleRowHTML()));
+  rowsEl.addEventListener('click', (e) => { const b = e.target.closest('[data-ts-delrow]'); if (b) b.closest('.ts-edit-row').remove(); });
+  document.getElementById('tsr-save').addEventListener('click', async () => {
+    const err = document.getElementById('tsr-error'); err.style.display = 'none';
+    const rows = [...rowsEl.querySelectorAll('.ts-edit-row')].map(div => { const o = {}; div.querySelectorAll('[data-k]').forEach(x => { o[x.dataset.k] = x.value; }); return o; });
+    const btn = document.getElementById('tsr-save'); btn.disabled = true;
+    try {
+      await callTeamApi('rule_save', { team, rule: { id: rule ? rule.id : undefined, title: document.getElementById('tsr-title').value, owners: document.getElementById('tsr-owners').value, rows } });
+      tsRules(team);
+    } catch (e2) { err.textContent = e2.message; err.style.display = 'block'; btn.disabled = false; }
+  });
+}
+
+/* ---- 交接項目 ---- */
+async function tsHandover(team) {
+  const el = tsShow(tsTitle(team, '交接項目'), currentAltar.name, tsHomeBack(team));
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { items, can_manage } = await callTeamApi('handover_list', { team });
+    const done = items.filter(i => i.confirmed_at).length;
+    let html = items.length ? `<p class="card-meta" style="margin:4px 0 8px;">已確認 ${done} / ${items.length}${can_manage ? '（組長勾選確認）' : ''}</p>` : '';
+    html += items.length ? items.map(i => `<div class="ts-check ${i.confirmed_at ? 'done' : ''}"><input type="checkbox" data-ts-chk="${i.id}" ${i.confirmed_at ? 'checked' : ''} ${can_manage ? '' : 'disabled'}>` +
+      `<div class="grow" style="flex:1;"><div class="t">${escapeHtml(i.title)}</div>${i.note ? '<div class="n">' + nl2(i.note) + '</div>' : ''}` +
+      (i.confirmed_at ? `<div class="n">✓ ${escapeHtml(i.confirmed_by_name || '')}　${new Date(i.confirmed_at).toLocaleString('zh-TW', { hour12: false })}</div>` : '') + '</div>' +
+      (can_manage ? `<button type="button" class="btn-text" data-ts-hedit="${i.id}">編輯</button>` : '') + '</div>').join('') : '<div class="empty-state">尚未建立交接項目。</div>';
+    if (can_manage) {
+      html += `<div class="section-title">新增交接項目</div><div class="field"><input type="text" id="tsh-title" placeholder="例：鑰匙、帳務、庫存、注意事項"></div><div class="field"><textarea id="tsh-note" placeholder="說明（選填）"></textarea></div><button type="button" class="submit-btn" id="tsh-add" style="width:100%; margin-top:0;">＋ 新增</button>` +
+        `<div class="card-actions" style="margin-top:18px;"><button type="button" class="btn-text" id="tsh-reset">重新開始交接（清除全部勾選）</button></div>`;
+    }
+    el.innerHTML = html;
+    el.querySelectorAll('[data-ts-chk]').forEach(c => c.addEventListener('change', async () => {
+      try { await callTeamApi('handover_toggle', { id: c.dataset.tsChk, confirmed: c.checked }); tsHandover(team); } catch (e) { alert(e.message); c.checked = !c.checked; }
+    }));
+    el.querySelectorAll('[data-ts-hedit]').forEach(b => b.addEventListener('click', () => tsHandoverEdit(team, items.find(i => i.id === b.dataset.tsHedit))));
+    const add = document.getElementById('tsh-add');
+    if (add) add.addEventListener('click', async () => {
+      try { await callTeamApi('handover_save', { team, item: { title: document.getElementById('tsh-title').value, note: document.getElementById('tsh-note').value } }); tsHandover(team); } catch (e) { alert(e.message); }
+    });
+    const rs = document.getElementById('tsh-reset');
+    if (rs) rs.addEventListener('click', async () => { if (!confirm('清除全部已確認的勾選，重新開始這一輪交接？')) return; try { await callTeamApi('handover_reset', { team }); tsHandover(team); } catch (e) { alert(e.message); } });
+  } catch (e) { el.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>'; }
+}
+function tsHandoverEdit(team, item) {
+  const el = tsShow('編輯交接項目', tsTitle(team, '交接項目'), () => tsHandover(team));
+  el.innerHTML = `<div class="field"><label>項目</label><input type="text" id="tsh-title" value="${escapeHtml(item.title)}"></div><div class="field"><label>說明</label><textarea id="tsh-note">${escapeHtml(item.note || '')}</textarea></div>
+    <button type="button" class="submit-btn" id="tsh-save" style="width:100%;">儲存 Save</button><div class="card-actions"><button type="button" class="btn-text danger" id="tsh-del">刪除此項目</button></div>`;
+  document.getElementById('tsh-save').addEventListener('click', async () => {
+    try { await callTeamApi('handover_save', { team, item: { id: item.id, title: document.getElementById('tsh-title').value, note: document.getElementById('tsh-note').value } }); tsHandover(team); } catch (e) { alert(e.message); }
+  });
+  document.getElementById('tsh-del').addEventListener('click', async () => {
+    if (!confirm('確定要刪除這個交接項目嗎？')) return;
+    try { await callTeamApi('handover_delete', { id: item.id }); tsHandover(team); } catch (e) { alert(e.message); }
+  });
+}
+
+/* ---- 整組對調 ---- */
+async function tsSwap(team) {
+  const el = tsShow(tsTitle(team, '組別對調'), currentAltar.name, tsHomeBack(team));
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const ov = await callTeamApi('overview');
+    const pend = (ov.swaps || []).filter(s => s.team_a === team || s.team_b === team);
+    const myLead = (t) => ov.is_global || (ov.teams || []).some(x => x.team === t && x.role === 'leader');
+    let html = '<div class="section-title">待確認的對調</div>';
+    html += pend.length ? pend.map(s => {
+      const A = TS_LABEL[s.team_a].title, B = TS_LABEL[s.team_b].title;
+      const canAnswer = myLead(s.team_b);
+      return `<div class="card"><div class="card-name">${A} ⇄ ${B}</div><div class="card-meta">${s.include_leaders ? '含組長一起對調' : '只對調組員（組長不動）'}・發起人：${escapeHtml(s.requested_by_name)}</div>` +
+        `<div class="card-actions">${canAnswer ? `<button type="button" class="btn-text primary" data-ts-sw="${s.id}" data-a="1">同意並執行</button><button type="button" class="btn-text danger" data-ts-sw="${s.id}" data-a="0">拒絕</button>` : ''}` +
+        `${(s.requested_by && myLead(s.team_a)) ? `<button type="button" class="btn-text" data-ts-swc="${s.id}">取消申請</button>` : ''}</div></div>`;
+    }).join('') : '<div class="empty-note">目前沒有待確認的對調。</div>';
+    const others = TS_TEAMS.filter(t => t !== team);
+    html += `<div class="section-title">發起對調</div><div class="field"><label>與哪一組對調</label><select id="tss-other">${others.map(t => `<option value="${t}">${TS_LABEL[t].icon} ${TS_LABEL[t].title}</option>`).join('')}</select></div>
+      <label class="checkbox-row-item" style="padding-left:0;"><input type="checkbox" id="tss-leaders" checked> 組長也一起對調</label>
+      <p class="card-meta">兩組的成員會整組互換；已同時在兩組的人不受影響。送出後需由對方組長同意才會執行（管理員發起則立即執行）。</p>
+      <button type="button" class="submit-btn" id="tss-go" style="width:100%;">送出對調申請</button>`;
+    el.innerHTML = html;
+    el.querySelectorAll('[data-ts-sw]').forEach(b => b.addEventListener('click', async () => {
+      const acc = b.dataset.a === '1';
+      if (acc && !confirm('同意後會立即整組對調成員，確定嗎？')) return;
+      try { await callTeamApi('swap_respond', { id: b.dataset.tsSw, accept: acc }); alert(acc ? '已完成對調。' : '已拒絕。'); tsSwap(team); } catch (e) { alert(e.message); }
+    }));
+    el.querySelectorAll('[data-ts-swc]').forEach(b => b.addEventListener('click', async () => {
+      try { await callTeamApi('swap_cancel', { id: b.dataset.tsSwc }); tsSwap(team); } catch (e) { alert(e.message); }
+    }));
+    document.getElementById('tss-go').addEventListener('click', async () => {
+      const other = document.getElementById('tss-other').value;
+      if (!confirm('向「' + TS_LABEL[other].title + '」發起與「' + TS_LABEL[team].title + '」的整組對調？')) return;
+      try {
+        const r = await callTeamApi('swap_propose', { team_a: team, team_b: other, include_leaders: document.getElementById('tss-leaders').checked });
+        alert(r.executed ? '已完成對調。' : '已送出申請，等待對方組長同意。'); tsSwap(team);
+      } catch (e) { alert(e.message); }
+    });
+  } catch (e) { el.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>'; }
+}
 </script>
 </body>
 </html>
