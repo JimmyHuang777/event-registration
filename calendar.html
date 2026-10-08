@@ -158,6 +158,9 @@
       <label><input type="checkbox" id="cal-f-event" checked> <span class="dot" style="background:#F97316;"></span>報名</label>
       <label><input type="checkbox" id="cal-f-task"> <span class="dot" style="background:#7C3AED;"></span>工作</label>
     </div>
+    <div class="cal-filter" style="padding-top:8px;">
+      <label>🛕 壇 <select id="cal-altar" style="padding:5px 8px; border:1px solid var(--line); border-radius:8px; font-size:14px; max-width:60vw;"><option value="">全部壇</option></select></label>
+    </div>
     <div class="cal-grid" id="cal-grid"></div>
     <div class="cal-list" id="cal-list"></div>
   </div>
@@ -254,7 +257,28 @@ function todayStr() { return new Date(Date.now() + 8 * 3600 * 1000).toISOString(
 function dateStr(y, m, d) { return y + '-' + pad2(m) + '-' + pad2(d); }
 
 // items on a given date (multi-day entries cover every day in their range)
-function shownItems() { return calItems.filter(it => calFilters[it.kind]); }
+// 壇篩選：只影響活動／任務；行事曆、仙佛紀念日、農曆初一十五是全域，照常顯示。選上層壇會包含底下的壇。
+let calAltars = [], calAltarSel = '';
+try { calAltarSel = localStorage.getItem('calendarAltar') || ''; } catch (e) {}
+function altarSubtree(id) {
+  const ids = new Set([id]); let grew = true;
+  while (grew) { grew = false; calAltars.forEach(a => { if (a.parent_id && ids.has(a.parent_id) && !ids.has(a.id)) { ids.add(a.id); grew = true; } }); }
+  return ids;
+}
+function renderAltarSelect() {
+  const sel = document.getElementById('cal-altar');
+  const byParent = {}; calAltars.forEach(a => { (byParent[a.parent_id || '__root__'] ||= []).push(a); });
+  let html = '<option value="">全部壇</option>';
+  (function walk(key, depth) { (byParent[key] || []).forEach(a => { html += '<option value="' + a.id + '">' + '　'.repeat(depth) + escapeHtml(a.name) + '</option>'; walk(a.id, depth + 1); }); })('__root__', 0);
+  sel.innerHTML = html;
+  if (calAltarSel && !calAltars.some(a => a.id === calAltarSel)) calAltarSel = '';
+  sel.value = calAltarSel;
+}
+function altarOk(it) {
+  if (!calAltarSel || (it.kind !== 'event' && it.kind !== 'task')) return true;
+  return !!it.altar_id && altarSubtree(calAltarSel).has(it.altar_id);
+}
+function shownItems() { return calItems.filter(it => calFilters[it.kind] && altarOk(it)); }
 function itemsOn(ds) {
   return shownItems().filter(it => it.date <= ds && ds <= (it.end_date || it.date));
 }
@@ -314,6 +338,7 @@ async function loadMonth() {
   document.getElementById('cal-list').innerHTML = '<div class="empty-state">載入中…</div>';
   try {
     const data = await callApi('month', { year: calYear, month: calMonth, with_tasks: !!calFilters.task });
+    calAltars = data.altars || []; renderAltarSelect();
     calItems = (data.items || []).concat(lunarMarkers(calYear, calMonth).map(x => ({ kind: 'lunar', date: x.date, title: x.title })));
     calItems.sort((a, b) => a.date.localeCompare(b.date));
   } catch (err) {
@@ -332,6 +357,11 @@ function syncFilterBoxes() {
   if (k === 'task' && e.target.checked) loadMonth(); else renderCalendar();
 }));
 syncFilterBoxes();
+document.getElementById('cal-altar').addEventListener('change', (e) => {
+  calAltarSel = e.target.value;
+  try { localStorage.setItem('calendarAltar', calAltarSel); } catch (err) {}
+  renderCalendar();
+});
 
 function shiftMonth(delta) {
   calMonth += delta;

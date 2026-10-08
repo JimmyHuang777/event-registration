@@ -111,7 +111,7 @@ serve(async (req) => {
       const { data: links } = await supabase.from("event_groups").select("event_id, group_id").in("event_id", evs.map((e: any) => e.id));
       const ok = await visibleIds(evs, (links || []).map((l: any) => ({ id: l.event_id, group_id: l.group_id })), myGroupIds, userId);
       evs.filter((e: any) => ok.has(e.id)).forEach((e: any) =>
-        items.push({ kind: "event", id: e.id, date: e.event_date, end_date: null, title: e.name, place: e.location, slug: e.slug }));
+        items.push({ kind: "event", id: e.id, date: e.event_date, end_date: null, title: e.name, place: e.location, slug: e.slug, altar_id: e.altar_id || null }));
     }
 
     // 3) jobs (every recurrence) — only when the caller asks (with_tasks),
@@ -129,12 +129,14 @@ serve(async (req) => {
         const { data: links } = await supabase.from("task_template_groups").select("template_id, group_id").in("template_id", tpls.map((t: any) => t.id));
         const ok = await visibleIds(tpls, (links || []).map((l: any) => ({ id: l.template_id, group_id: l.group_id })), myGroupIds, userId);
         live.filter((i: any) => ok.has(i.template_id)).forEach((i: any) =>
-          items.push({ kind: "task", id: i.template_id, date: i.occurrence_date, end_date: null, title: i.task_templates.title, place: i.task_templates.place, once: i.task_templates.recurrence === "once" }));
+          items.push({ kind: "task", id: i.template_id, date: i.occurrence_date, end_date: null, title: i.task_templates.title, place: i.task_templates.place, once: i.task_templates.recurrence === "once", altar_id: i.task_templates.altar_id || null }));
       }
     }
 
     items.sort((a, b) => a.date.localeCompare(b.date));
-    return json({ year, month, items });
+    // 壇清單（供行事曆的「壇」篩選；新增壇後自動出現）
+    const { data: altars } = await supabase.from("altars").select("id, name, parent_id").order("created_at", { ascending: true });
+    return json({ year, month, items, altars: altars || [] });
   } catch (err) {
     console.error(err);
     return json({ error: String(err) }, 500);
