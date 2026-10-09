@@ -553,8 +553,8 @@ document.getElementById('regs-back-btn').addEventListener('click', () => showScr
 
 /* ---------- Custom field builder (same shape as the dashboard's) ---------- */
 
-// 火車車次（瑞穗站抵達時間）— 依抵達時間排序；選項文字即為存入報名資料的值
-let TRAIN_OPTIONS = [
+// 火車車次：去程（南下）顯示「抵達瑞穗」時間，回程（北上）顯示「瑞穗出發」時間；選項文字即為存入報名資料的值
+let TRAIN_OPTIONS = { south: [
   '306 自強 (3000) · 07:15 抵達瑞穗',
   '402 普悠瑪 · 08:58 抵達瑞穗',
   '406 自強 (3000) · 09:51 抵達瑞穗',
@@ -569,14 +569,18 @@ let TRAIN_OPTIONS = [
   '442 自強 (3000) · 20:28 抵達瑞穗',
   '438 自強 (3000) · 21:35 抵達瑞穗',
   '448 普悠瑪 · 23:12 抵達瑞穗'
-];
-
-const trainLabel = (t) => `${t.train_no} ${t.train_type} · ${t.arrive_time} 抵達瑞穗`;
-// Loads the active timetable (sorted by arrival); keeps the built-in list if the table isn't there yet.
+], north: [] };
+const trainDir = (v) => (v === 'north' ? 'north' : 'south');
+const trainLabel = (t) => (trainDir(t.direction) === 'north' ? `${t.train_no} ${t.train_type} · ${t.depart_time} 瑞穗出發` : `${t.train_no} ${t.train_type} · ${t.arrive_time} 抵達瑞穗`);
+function trainBuckets(list) {
+  const pick = (dir, key) => (list || []).filter(t => trainDir(t.direction) === dir && t[key]).sort((a, b) => String(a[key]).localeCompare(String(b[key]))).map(trainLabel);
+  return { south: pick('south', 'arrive_time'), north: pick('north', 'depart_time') };
+}
+// Loads the active timetable; keeps the built-in list if the table isn't there yet.
 async function loadTrainOptions() {
   try {
     const { trains } = await callApi('list_trains');
-    if (Array.isArray(trains)) TRAIN_OPTIONS = trains.map(trainLabel);
+    if (Array.isArray(trains)) TRAIN_OPTIONS = trainBuckets(trains);
   } catch (e) { /* keep built-in list */ }
   return TRAIN_OPTIONS;
 }
@@ -599,12 +603,16 @@ function addFieldBuilderRow(prefill) {
         <option value="select" ${prefill && prefill.type === 'select' ? 'selected' : ''}>下拉選單</option>
         <option value="toggle" ${prefill && prefill.type === 'toggle' ? 'selected' : ''}>按鈕 (兩選一)</option>
         <option value="text" ${prefill && prefill.type === 'text' ? 'selected' : ''}>文字輸入</option>
-        <option value="train" ${prefill && prefill.type === 'train' ? 'selected' : ''}>火車車次（顯示瑞穗抵達時間）</option>
+        <option value="train" ${prefill && prefill.type === 'train' ? 'selected' : ''}>火車車次（去程顯示抵達、回程顯示出發）</option>
       </select>
       <button type="button" class="remove-field-btn">✕</button>
     </div>
     <div class="fb-row2">
       <input type="text" class="fb-options" placeholder="選項，用逗號分隔 (例: 培賢,妙覺,崇義)" value="${prefill && prefill.type === 'select' && prefill.options ? escapeHtml(prefill.options.join(',')) : ''}">
+      <select class="fb-train-dir" style="display:none;">
+        <option value="south" ${prefill && prefill.direction !== 'north' ? 'selected' : ''}>去程（南下）：顯示抵達瑞穗時間</option>
+        <option value="north" ${prefill && prefill.direction === 'north' ? 'selected' : ''}>回程（北上）：顯示瑞穗出發時間</option>
+      </select>
       <select class="fb-toggle-preset">
         <option value="需要,不需要">需要 / 不需要</option>
         <option value="是,否">是 / 否</option>
@@ -617,10 +625,13 @@ function addFieldBuilderRow(prefill) {
   const typeSelect = wrap.querySelector('.fb-type');
   const optionsInput = wrap.querySelector('.fb-options');
   const togglePreset = wrap.querySelector('.fb-toggle-preset');
+  const trainDirSel = wrap.querySelector('.fb-train-dir');
   // 欄位名稱為「住宿」時，自動改成下拉選單並帶入選項「內宿、外宿」（匯出統計表會轉成內宿／外宿欄的 V）
   const labelInput = wrap.querySelector('.fb-label');
   labelInput.addEventListener('change', () => {
-    if (labelInput.value.replace(/\s+/g, '') !== '住宿') return;
+    const lb = labelInput.value.replace(/\s+/g, '');
+    if (typeSelect.value === 'train') { if (/回程/.test(lb)) trainDirSel.value = 'north'; else if (/去程/.test(lb)) trainDirSel.value = 'south'; syncFieldTypeUI(); return; }
+    if (lb !== '住宿') return;
     typeSelect.value = 'select';
     if (!optionsInput.value.trim()) optionsInput.value = '內宿,外宿';
     syncFieldTypeUI();
@@ -635,17 +646,18 @@ function addFieldBuilderRow(prefill) {
     const type = typeSelect.value;
     optionsInput.style.display = type === 'select' ? 'block' : 'none';
     togglePreset.style.display = type === 'toggle' ? 'block' : 'none';
+    trainDirSel.style.display = type === 'train' ? 'block' : 'none';
     if (type === 'train' && !wrap.querySelector('.fb-train-hint')) {
       const h = document.createElement('div');
       h.className = 'fb-train-hint';
       h.style.cssText = 'font-size:12px;color:#888;margin:4px 0';
-      h.textContent = '報名者會看到下拉選單：車次、車種與抵達瑞穗時間（共 ' + TRAIN_OPTIONS.length + ' 班）';
       wrap.querySelector('.fb-row2').after(h);
     }
     const th = wrap.querySelector('.fb-train-hint');
-    if (th) th.style.display = type === 'train' ? 'block' : 'none';
+    if (th) { th.style.display = type === 'train' ? 'block' : 'none'; const d = trainDirSel.value; th.textContent = '報名者會看到下拉選單：車次、車種與' + (d === 'north' ? '瑞穗出發' : '抵達瑞穗') + '時間（共 ' + TRAIN_OPTIONS[d].length + ' 班）'; }
   }
   typeSelect.addEventListener('change', syncFieldTypeUI);
+  trainDirSel.addEventListener('change', syncFieldTypeUI);
   syncFieldTypeUI();
 
   wrap.querySelector('.remove-field-btn').addEventListener('click', () => wrap.remove());
@@ -687,7 +699,9 @@ function collectFormSchema() {
       field.options = row.querySelector('.fb-toggle-preset').value.split(',');
     }
     if (type === 'train') {
-      field.options = TRAIN_OPTIONS.slice();
+      const dir = trainDir(row.querySelector('.fb-train-dir').value);
+      field.direction = dir;
+      field.options = TRAIN_OPTIONS[dir].slice();
     }
     formSchema.push(field);
   });

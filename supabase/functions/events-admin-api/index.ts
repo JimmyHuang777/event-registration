@@ -201,9 +201,14 @@ serve(async (req) => {
 
       // ---- Active train timetable (瑞穗站) for the 火車車次 field ----
       case "list_trains": {
-        const { data, error } = await supabase
-          .from("train_schedule").select("train_no, train_type, arrive_time")
-          .eq("is_active", true).order("arrive_time", { ascending: true });
+        // direction: 'south'（去程，顯示抵達瑞穗時間）／'north'（回程，顯示瑞穗出發時間）；尚未執行 SQL 57 時退回舊欄位（全部視為去程）
+        let { data, error } = await supabase
+          .from("train_schedule").select("train_no, train_type, arrive_time, depart_time, direction")
+          .eq("is_active", true);
+        if (error) {
+          const r = await supabase.from("train_schedule").select("train_no, train_type, arrive_time, depart_time").eq("is_active", true);
+          data = r.data; error = r.error;
+        }
         if (error) return json({ error: error.message }, 400);
         return json({ trains: data || [] });
       }

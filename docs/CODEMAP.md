@@ -348,63 +348,64 @@
 | 54-review-leader-job-admins.sql | — |
 | 55-subtask-checklist-fields.sql | `task_subtask_templates` |
 | 56-altar-team-rules-handover-swaps.sql | `altar_team_rules`, `altar_team_rule_rows`, `altar_team_handover_items`, `altar_team_swaps` |
+| 57-train-direction.sql | `train_schedule` |
 
 ## 5. Dashboard（index.html）
 
-- 總行數：8316
+- 總行數：8353
 - 區段（行號）：
 
 | 起始行 | 結束行 | 區段 |
 |---|---|---|
-| 1547 | 1585 | Auth |
-| 1586 | 1627 | Roles & events |
-| 1628 | 1726 | Topbar system dropdowns (道務運作系統 / 壇務運作系統 |
-| 1727 | 1856 | Task view (top-right task-select dropdown) — mirrors |
-| 1857 | 1902 | Content shell (stats + toolbar + table) |
-| 1903 | 1910 | CSV Export |
-| 1911 | 2056 | CSV export with user-added extra columns |
-| 2057 | 2103 | 自動排序（報名名單） |
-| 2104 | 2318 | 交通、住宿、用餐統計表（Excel） |
-| 2319 | 2467 | PDF export (same data + extra columns as the CSV) |
-| 2468 | 2650 | Registrants |
-| 2651 | 2664 | Realtime |
-| 2665 | 2679 | Helpers |
-| 2680 | 3039 | New Event creation (Super Admin only) |
-| 3040 | 3137 | Manage Events panel (Super Admin only) |
-| 3138 | 3390 | 管理者權限矩陣 Admin Permissions (super admin) |
-| 3391 | 3456 | Member Profiles (個人資訊 + 親友資訊) |
-| 3457 | 3465 | Word calendar import: parsing core (pure functions) |
-| 3466 | 3758 | 農曆 → 國曆（瀏覽器內建 Intl 中國曆，免外部資料） |
-| 3759 | 3847 | 火車時刻管理 |
-| 3848 | 3978 | 仙佛紀念日管理 |
-| 3979 | 4165 | 行事曆 Calendar (Dashboard) |
-| 4166 | 4403 | Word import wizard |
-| 4404 | 4509 | 工作細則 Word → 已存範本 |
-| 4510 | 4925 | 工作檢核表（時間／工作組／工作細則／負責人／檢核人）→ 多份工作範本 |
-| 4926 | 5013 | Car Managers (global permission list) |
-| 5014 | 5039 | Event picker (which event's carpool board to view) |
-| 5040 | 5260 | Matching (trips + requests) for one event |
-| 5261 | 5363 | Lodging Managers (global permission list) |
-| 5364 | 5451 | Meeting Admins (global permission list) |
-| 5452 | 5477 | Event picker (which event's lodging board to view) |
-| 5478 | 5877 | Matching (offers + requests) for one event |
-| 5878 | 6024 | Altar detail: 3 team rosters |
-| 6025 | 6295 | 壇各組：工作細則（6W 簡流表）／交接項目／整組對調 |
-| 6296 | 6350 | Dual-calendar date formatting (lunar-javascript) |
-| 6351 | 6411 | Flow list |
-| 6412 | 6564 | Day tabs + item builder |
-| 6565 | 6752 | Flow presets (save/apply a flow sheet's content) |
-| 6753 | 6853 | Flow admins modal |
-| 6854 | 6918 | Templates |
-| 6919 | 7054 | Subtask builder (inside the template form) |
-| 7055 | 7069 | Shared altar picker (used by Task Templates, Events, |
-| 7070 | 7305 | Job presets (save/apply a job's content, minus |
-| 7306 | 7569 | Upcoming instances |
-| 7570 | 7714 | Assignment list (detailed, searchable, exportable — |
-| 7715 | 7769 | Upcoming: calendar sub-view |
-| 7770 | 8124 | Assign modal |
-| 8125 | 8222 | Group members modal |
-| 8223 | 8316 | Job admins modal |
+| 1551 | 1589 | Auth |
+| 1590 | 1631 | Roles & events |
+| 1632 | 1730 | Topbar system dropdowns (道務運作系統 / 壇務運作系統 |
+| 1731 | 1860 | Task view (top-right task-select dropdown) — mirrors |
+| 1861 | 1906 | Content shell (stats + toolbar + table) |
+| 1907 | 1914 | CSV Export |
+| 1915 | 2060 | CSV export with user-added extra columns |
+| 2061 | 2107 | 自動排序（報名名單） |
+| 2108 | 2322 | 交通、住宿、用餐統計表（Excel） |
+| 2323 | 2471 | PDF export (same data + extra columns as the CSV) |
+| 2472 | 2654 | Registrants |
+| 2655 | 2668 | Realtime |
+| 2669 | 2683 | Helpers |
+| 2684 | 3058 | New Event creation (Super Admin only) |
+| 3059 | 3156 | Manage Events panel (Super Admin only) |
+| 3157 | 3409 | 管理者權限矩陣 Admin Permissions (super admin) |
+| 3410 | 3475 | Member Profiles (個人資訊 + 親友資訊) |
+| 3476 | 3484 | Word calendar import: parsing core (pure functions) |
+| 3485 | 3777 | 農曆 → 國曆（瀏覽器內建 Intl 中國曆，免外部資料） |
+| 3778 | 3884 | 火車時刻管理 |
+| 3885 | 4015 | 仙佛紀念日管理 |
+| 4016 | 4202 | 行事曆 Calendar (Dashboard) |
+| 4203 | 4440 | Word import wizard |
+| 4441 | 4546 | 工作細則 Word → 已存範本 |
+| 4547 | 4962 | 工作檢核表（時間／工作組／工作細則／負責人／檢核人）→ 多份工作範本 |
+| 4963 | 5050 | Car Managers (global permission list) |
+| 5051 | 5076 | Event picker (which event's carpool board to view) |
+| 5077 | 5297 | Matching (trips + requests) for one event |
+| 5298 | 5400 | Lodging Managers (global permission list) |
+| 5401 | 5488 | Meeting Admins (global permission list) |
+| 5489 | 5514 | Event picker (which event's lodging board to view) |
+| 5515 | 5914 | Matching (offers + requests) for one event |
+| 5915 | 6061 | Altar detail: 3 team rosters |
+| 6062 | 6332 | 壇各組：工作細則（6W 簡流表）／交接項目／整組對調 |
+| 6333 | 6387 | Dual-calendar date formatting (lunar-javascript) |
+| 6388 | 6448 | Flow list |
+| 6449 | 6601 | Day tabs + item builder |
+| 6602 | 6789 | Flow presets (save/apply a flow sheet's content) |
+| 6790 | 6890 | Flow admins modal |
+| 6891 | 6955 | Templates |
+| 6956 | 7091 | Subtask builder (inside the template form) |
+| 7092 | 7106 | Shared altar picker (used by Task Templates, Events, |
+| 7107 | 7342 | Job presets (save/apply a job's content, minus |
+| 7343 | 7606 | Upcoming instances |
+| 7607 | 7751 | Assignment list (detailed, searchable, exportable — |
+| 7752 | 7806 | Upcoming: calendar sub-view |
+| 7807 | 8161 | Assign modal |
+| 8162 | 8259 | Group members modal |
+| 8260 | 8353 | Job admins modal |
 
 - 頂部入口按鈕：`new-event-btn`（＋ 新增活動 New Event）、`manage-events-btn`（管理活動 Manage）、`manage-tasks-btn`（任務管理 Tasks）、`manage-groups-btn`（群組 Groups）、`manage-flows-btn`（流程表 Flow Sheets）、`manage-home-btn`（群聖家園連結 Home Link）、`manage-calendar-btn`（行事曆 Calendar）、`manage-trains-btn`（🚆 火車時刻 Train Schedule）、`manage-saints-btn`（🕯 仙佛紀念日 Saint Days）、`manage-profiles-btn`（成員資料 Member Profiles）、`manage-admin-roles-btn`（管理員角色 Admin Roles）、`manage-perms-btn`（管理者權限 Admin Permissions）、`manage-altars-btn`（⛩️ 壇 Altars（天廚／佛堂／庶務／住壇））、`manage-carpool-btn`（🚗 共乘 Carpool）、`manage-lodging-btn`（🏠 住宿 Lodging）、`manage-meetings-btn`（🗣️ 溝通共識 Meetings）、`manage-event-admins-btn`（管理 Manage）、`manage-events-close-btn`（關閉）、`manage-job-admins-btn`（管理 Manage）、`new-template-btn`（＋ 新增工作範本 New Template）、`manage-flow-admins-btn`（管理 Manage）、`new-flow-btn`（＋ 新增流程表 New Flow Sheet）、`manage-car-managers-btn`（管理 Manage）、`manage-lodging-managers-btn`（管理 Manage）、`manage-meeting-admins-btn`（管理 Manage）
 
