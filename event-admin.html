@@ -617,6 +617,14 @@ function addFieldBuilderRow(prefill) {
   const typeSelect = wrap.querySelector('.fb-type');
   const optionsInput = wrap.querySelector('.fb-options');
   const togglePreset = wrap.querySelector('.fb-toggle-preset');
+  // 欄位名稱為「住宿」時，自動改成下拉選單並帶入選項「內宿、外宿」（匯出統計表會轉成內宿／外宿欄的 V）
+  const labelInput = wrap.querySelector('.fb-label');
+  labelInput.addEventListener('change', () => {
+    if (labelInput.value.replace(/\s+/g, '') !== '住宿') return;
+    typeSelect.value = 'select';
+    if (!optionsInput.value.trim()) optionsInput.value = '內宿,外宿';
+    syncFieldTypeUI();
+  });
 
   if (prefill && prefill.type === 'toggle' && prefill.options) {
     const joined = prefill.options.join(',');
