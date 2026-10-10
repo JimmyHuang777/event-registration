@@ -87,6 +87,24 @@ async function canRegisterFor(eventId: string, userId: string | null): Promise<b
   return groupIds.length === 0;                                 // altar set but no groups → public (same as the listing rule)
 }
 
+// Input limits (abuse / accidental huge payloads).
+const MAX_ATTENDEES = 20;
+function attendeeTooBig(a: any): string | null {
+  if (String(a?.name ?? "").length > 100) return "姓名太長。";
+  if (String(a?.phone ?? "").length > 40) return "電話太長。";
+  if (String(a?.notes ?? "").length > 1000) return "備註太長（上限 1000 字）。";
+  try { if (a?.extra_data !== undefined && JSON.stringify(a.extra_data).length > 8000) return "報名欄位內容太大。"; } catch (_e) { return "報名欄位格式不正確。"; }
+  return null;
+}
+// open = active and not past registration_deadline (null = no deadline).
+async function eventOpenState(eventId: string): Promise<"open" | "inactive" | "deadline"> {
+  const { data } = await supabase.from("events").select("is_active, registration_deadline").eq("id", eventId).maybeSingle();
+  if (!data || !data.is_active) return "inactive";
+  if (data.registration_deadline && Date.now() > Date.parse(data.registration_deadline)) return "deadline";
+  return "open";
+}
+const CLOSED_MSG: Record<string, string> = { inactive: "此活動目前未開放報名。", deadline: "報名已截止，如需協助請聯繫主辦單位。" };
+
 const NOT_ELIGIBLE_MSG = "此活動僅開放特定壇／群組的成員報名，您的帳號不在適用範圍內。如有疑問請聯繫主辦單位。";
 
 serve(async (req) => {
@@ -144,10 +162,14 @@ serve(async (req) => {
         if (!Array.isArray(attendees) || attendees.length === 0) {
           return json({ error: "Missing attendees." }, 400);
         }
+        if (attendees.length > MAX_ATTENDEES) return json({ error: `一次最多報名 ${MAX_ATTENDEES} 人。` }, 400);
+        { const st = await eventOpenState(event_id); if (st !== "open") return json({ error: CLOSED_MSG[st], code: "event_closed" }, 403); }
         for (const a of attendees) {
           if (!a || !a.name || !String(a.name).trim()) {
             return json({ error: "Every attendee needs a name." }, 400);
           }
+          const big = attendeeTooBig(a);
+          if (big) return json({ error: big }, 400);
         }
 
         // The submitter's own profile — identity + contact info,
@@ -269,6 +291,12 @@ serve(async (req) => {
           return json({ error: "You can only edit your own registrations." }, 403);
         }
 
+        const big = attendeeTooBig({ name, phone, notes, extra_data });
+        if (big) return json({ error: big }, 400);
+        {
+          const { data: evRow } = await supabase.from("registrations").select("event_id").eq("id", registration_id).maybeSingle();
+          if (evRow) { const st = await eventOpenState(evRow.event_id); if (st !== "open") return json({ error: st === "deadline" ? "報名已截止，無法再修改資料。" : "此活動目前未開放修改。", code: "event_closed" }, 403); }
+        }
         const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
         if (name !== undefined) {
           const { data: ev } = await supabase.from("registrations").select("event_id").eq("id", registration_id).maybeSingle();

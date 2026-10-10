@@ -355,6 +355,7 @@ serve(async (req) => {
         return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {
-    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    console.error(err);
+    return json({ error: "伺服器發生錯誤，請稍後再試。Server error." }, 500);
   }
 });

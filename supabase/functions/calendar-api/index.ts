@@ -1,8 +1,13 @@
 // =========================================================
 // SUPABASE EDGE FUNCTION: calendar-api
 //
-// Backs calendar.html — the member-facing 行事曆. One action:
-//   month { year, month }  — everything dated inside that month:
+// Backs calendar.html — the member-facing 行事曆. Actions:
+//   save_entry / delete_entry — add / edit / delete a plain calendar
+//     entry (活動管理者 only, i.e. rows in event_admins; same people who
+//     manage 班程 on LIFF). 仙佛紀念日 (category = saint) are NOT editable
+//     here — they are managed on the Dashboard's saint-day manager.
+//   month { year, month }  — everything dated inside that month
+//     (response also carries can_edit for the caller):
 //     - calendar_entries   (純行事曆行程，所有成員可見)
 //     - events             (班程報名；active 且對該成員可見)
 //     - jobs               (only when with_tasks=true; every recurrence, visible ones)
@@ -74,7 +79,56 @@ serve(async (req) => {
     const claims = await verifyLineToken(body.idToken);
     if (!claims) return json({ error: "Your LINE session is invalid or expired. Please reopen this page from LINE." }, 401);
 
-    if (body.action !== "month") return json({ error: "Unknown action." }, 400);
+    if (!["month", "save_entry", "delete_entry"].includes(body.action)) return json({ error: "Unknown action." }, 400);
+
+    const { data: user } = await supabase.from("users").select("id").eq("line_user_id", claims.sub).maybeSingle();
+    const userId: string | null = user ? user.id : null;
+    let canEdit = false;
+    if (userId) {
+      const { data: adminRow } = await supabase.from("event_admins").select("user_id").eq("user_id", userId).maybeSingle();
+      canEdit = !!adminRow;
+    }
+
+    if (body.action === "save_entry" || body.action === "delete_entry") {
+      if (!canEdit) return json({ error: "您沒有編輯行事曆的權限（需為活動管理者）。" }, 403);
+
+      if (body.action === "delete_entry") {
+        if (!body.id) return json({ error: "Missing id." }, 400);
+        const { data: row } = await supabase.from("calendar_entries").select("id, category").eq("id", body.id).maybeSingle();
+        if (!row) return json({ error: "找不到這個行程。" }, 404);
+        if (row.category === "saint") return json({ error: "仙佛紀念日請在 Dashboard 管理。" }, 403);
+        const { error } = await supabase.from("calendar_entries").delete().eq("id", body.id);
+        if (error) return json({ error: error.message }, 400);
+        return json({ success: true });
+      }
+
+      const title = String(body.title || "").trim();
+      const isDate = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+      if (!title) return json({ error: "請填寫項目名稱。" }, 400);
+      if (!isDate(body.entry_date)) return json({ error: "請選擇開始日期。" }, 400);
+      if (body.end_date && !isDate(body.end_date)) return json({ error: "結束日期格式不正確。" }, 400);
+      if (body.end_date && body.end_date < body.entry_date) return json({ error: "結束日期不能早於開始日期。" }, 400);
+      const clean = (v: unknown) => (v ? String(v).trim() || null : null);
+      const payload = {
+        entry_date: body.entry_date,
+        end_date: body.end_date || null,
+        title,
+        time_text: clean(body.time_text),
+        place: clean(body.place),
+        notes: clean(body.notes),
+      };
+      if (body.id) {
+        const { data: row } = await supabase.from("calendar_entries").select("id, category").eq("id", body.id).maybeSingle();
+        if (!row) return json({ error: "找不到這個行程。" }, 404);
+        if (row.category === "saint") return json({ error: "仙佛紀念日請在 Dashboard 管理。" }, 403);
+        const { error } = await supabase.from("calendar_entries").update(payload).eq("id", body.id);
+        if (error) return json({ error: error.message.includes("duplicate") ? "同一天已經有同名的行程。" : error.message }, 400);
+        return json({ success: true, id: body.id });
+      }
+      const { data, error } = await supabase.from("calendar_entries").insert(payload).select("id").single();
+      if (error) return json({ error: error.message.includes("duplicate") ? "同一天已經有同名的行程。" : error.message }, 400);
+      return json({ success: true, id: data.id });
+    }
 
     const year = parseInt(String(body.year), 10);
     const month = parseInt(String(body.month), 10);
@@ -83,8 +137,6 @@ serve(async (req) => {
     const first = `${year}-${pad(month)}-01`;
     const last = `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`;
 
-    const { data: user } = await supabase.from("users").select("id").eq("line_user_id", claims.sub).maybeSingle();
-    const userId: string | null = user ? user.id : null;
     let myGroupIds = new Set<string>();
     if (userId) {
       const { data: gm } = await supabase.from("task_group_members").select("group_id").eq("user_id", userId);
@@ -136,9 +188,9 @@ serve(async (req) => {
     items.sort((a, b) => a.date.localeCompare(b.date));
     // 壇清單（供行事曆的「壇」篩選；新增壇後自動出現）
     const { data: altars } = await supabase.from("altars").select("id, name, parent_id").order("created_at", { ascending: true });
-    return json({ year, month, items, altars: altars || [] });
+    return json({ year, month, items, altars: altars || [], can_edit: canEdit });
   } catch (err) {
     console.error(err);
-    return json({ error: String(err) }, 500);
+    return json({ error: "伺服器發生錯誤，請稍後再試。Server error." }, 500);
   }
 });

@@ -70,6 +70,14 @@ async function pushLine(lineUserIds: string[], text: string): Promise<number> {
   return sent;
 }
 
+// Constant-time string compare (avoid leaking the secret through timing).
+function safeEqual(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
+
 type Hit = { rule: any; key: string; date: string; title: string; place: string | null; notes: string | null };
 
 // Which sources has this rule reached (inside its lead window, today..date)?
@@ -108,10 +116,17 @@ async function dispatchOne(hit: Hit, homeLink: string | null): Promise<{ event_i
     if (tpl) {
       slug = `auto-${hit.date.replace(/-/g, "")}-${Math.random().toString(36).slice(2, 6)}`;
       const desc = [tpl.description, hit.notes].filter(Boolean).join("\n\n") || null;
+      // Deadline: keep the template's "N days before the event" offset (台灣時間 midnight of the event day).
+      let deadline: string | null = null;
+      if (tpl.registration_deadline && tpl.event_date) {
+        const off = Date.parse(tpl.event_date + "T00:00:00+08:00") - Date.parse(tpl.registration_deadline);
+        const dl = Date.parse(hit.date + "T00:00:00+08:00") - off;
+        if (off >= 0 && dl > Date.now()) deadline = new Date(dl).toISOString();
+      }
       const { data: ev, error } = await supabase.from("events").insert({
         name: hit.title, event_date: hit.date, location: hit.place || tpl.location || null, description: desc,
         slug, form_schema: tpl.form_schema, altar_id: tpl.altar_id || null, is_featured: false, is_active: true,
-        offers_transport: !!tpl.offers_transport, offers_lodging: !!tpl.offers_lodging,
+        offers_transport: !!tpl.offers_transport, offers_lodging: !!tpl.offers_lodging, registration_deadline: deadline,
       }).select("id").single();
       if (error) throw new Error("建立報名表失敗：" + error.message);
       eventId = ev.id;
@@ -169,7 +184,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   try {
     const body = await req.json().catch(() => ({}));
-    const cronOk = CRON_SECRET && req.headers.get("x-cron-secret") === CRON_SECRET;
+    const cronOk = !!CRON_SECRET && safeEqual(req.headers.get("x-cron-secret") || "", CRON_SECRET);
     if (!cronOk) {
       if (!body.accessToken) return json({ error: "Missing accessToken." }, 401);
       const { data: u, error: ue } = await supabase.auth.getUser(body.accessToken);
@@ -224,6 +239,6 @@ serve(async (req) => {
     return json({ today, dry_run: dry, dispatched, skipped: hits.length - fresh.length });
   } catch (err) {
     console.error(err);
-    return json({ error: String(err) }, 500);
+    return json({ error: "伺服器發生錯誤，請稍後再試。Server error." }, 500);
   }
 });

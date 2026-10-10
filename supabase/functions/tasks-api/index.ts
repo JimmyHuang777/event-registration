@@ -131,6 +131,18 @@ async function isTemplateVisible(templateId: string, existingUser: { id: string 
   return groupLinks.some((r: any) => myGroupIds.has(r.group_id));
 }
 
+// Race guard for subtask claims: after writing our row, re-count the live rows
+// (stable order by id). If ours is beyond `slots`, undo it and report true.
+async function subtaskOverbooked(rowId: string, instanceId: string, subtaskId: string, slots: number, inserted: boolean): Promise<boolean> {
+  const { data } = await supabase.from("task_subtask_completions").select("id, status")
+    .eq("instance_id", instanceId).eq("subtask_template_id", subtaskId).in("status", ["taken", "completed"]).order("id");
+  const idx = (data || []).findIndex((r: any) => r.id === rowId);
+  if (idx < slots) return false;
+  if (inserted) await supabase.from("task_subtask_completions").delete().eq("id", rowId);
+  else await supabase.from("task_subtask_completions").update({ status: "incomplete", assigned_user_id: null }).eq("id", rowId);
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -478,6 +490,20 @@ serve(async (req) => {
           assignment = data;
         }
 
+        // Race guard: two people may pass the check above at the same time.
+        // Re-count; if our row falls outside the first `slotsTotal` active rows
+        // (stable order by id, same for every racer), undo it.
+        if (!(priorRow && priorRow.status !== "cancelled")) {
+          const { data: after } = await supabase
+            .from("task_assignments").select("id").eq("instance_id", instance_id).neq("status", "cancelled").order("id");
+          const idx = (after || []).findIndex((r: any) => r.id === assignment.id);
+          if (idx >= slotsTotal) {
+            if (priorRow) await supabase.from("task_assignments").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", assignment.id);
+            else await supabase.from("task_assignments").delete().eq("id", assignment.id);
+            return json({ error: "這個時段已經額滿了。This slot is already full." }, 409);
+          }
+        }
+
         return json({ assignment });
       }
 
@@ -643,12 +669,17 @@ serve(async (req) => {
             .update({ assigned_user_id: claimerUser.id, status: "taken", completed_by: null, completed_at: null })
             .eq("id", (reuse as any).id);
           if (error) return json({ error: error.message }, 400);
-          return json({ ok: true });
+          if (!(await subtaskOverbooked((reuse as any).id, instance_id, subtask_template_id, slots, false))) return json({ ok: true });
+          return json({ error: slots > 1 ? "這個子項目名額已滿。This subtask is full." : "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
         }
-        const { error } = await supabase
+        const { data: ins, error } = await supabase
           .from("task_subtask_completions")
-          .insert({ instance_id, subtask_template_id, assigned_user_id: claimerUser.id, status: "taken" });
+          .insert({ instance_id, subtask_template_id, assigned_user_id: claimerUser.id, status: "taken" })
+          .select("id").single();
         if (error) return json({ error: error.message }, 400);
+        if (await subtaskOverbooked(ins.id, instance_id, subtask_template_id, slots, true)) {
+          return json({ error: slots > 1 ? "這個子項目名額已滿。This subtask is full." : "這個子項目已經有人認領了。This subtask has already been taken." }, 409);
+        }
         return json({ ok: true });
       }
 

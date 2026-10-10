@@ -210,6 +210,10 @@
           <input type="date" id="f-date">
         </div>
         <div class="field">
+          <label>報名截止 Registration deadline <span class="hint">選填，台灣時間；空白＝不限</span></label>
+          <input type="datetime-local" id="f-deadline">
+        </div>
+        <div class="field">
           <label>地點 Location</label>
           <input type="text" id="f-location" placeholder="例：長聖佛宮">
         </div>
@@ -758,6 +762,7 @@ function openForm(ev) {
   document.getElementById('f-name').value = ev ? ev.name : '';
   document.getElementById('f-description').value = ev ? (ev.description || '') : '';
   document.getElementById('f-date').value = ev ? (ev.event_date || '') : '';
+  document.getElementById('f-deadline').value = (ev && ev.registration_deadline) ? new Date(Date.parse(ev.registration_deadline) + 8 * 3600 * 1000).toISOString().slice(0, 16) : '';
   document.getElementById('f-location').value = ev ? (ev.location || '') : '';
   document.getElementById('f-featured').checked = !!(ev && ev.is_featured);
   document.getElementById('f-transport').checked = !!(ev && ev.offers_transport);
@@ -804,6 +809,7 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     name,
     description: document.getElementById('f-description').value.trim() || null,
     event_date: document.getElementById('f-date').value || null,
+    registration_deadline: document.getElementById('f-deadline').value ? new Date(document.getElementById('f-deadline').value + ':00+08:00').toISOString() : null,
     location: document.getElementById('f-location').value.trim() || null,
     is_featured: document.getElementById('f-featured').checked,
     offers_transport: document.getElementById('f-transport').checked,

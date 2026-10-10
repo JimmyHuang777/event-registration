@@ -6,6 +6,24 @@
 ## [未發佈]
 （新的變更先寫這裡）
 
+## 2026.10.11-3　收緊權限（SQL 62）
+- 🗄 **報到人員只能改報名狀態**：`registrations` 加觸發器，staff 不能改姓名、電話、欄位內容、所屬活動或報名人；主辦、超級管理者、Edge Function、SQL Editor 不受影響。
+- 🗄 **匯出範本**：所有管理者仍可讀取與新增；修改與刪除限超級管理者或建立者（新增 `created_by`）。既有範本的建立者是空的，所以只有超級管理者能改／刪。
+- **要先跑的 SQL**：`SQL/62-tighten-staff-and-csv-policies.sql`（可重複執行，檔尾有還原方式）。**無程式碼變更，不需要 push**。已在本機 Postgres 以模擬角色測過。
+
+## 2026.10.11-2　報名截止日
+- 📱🖥⚙ 活動新增「報名截止」（`events.registration_deadline`，台灣時間輸入與顯示，空白＝不限）。Dashboard 新增／編輯活動、手機 `event-admin.html` 都能設定；報名頁（`index.html`）顯示截止時間，截止後隱藏報名表；`registrant-api` 截止後拒絕新增報名與修改（**仍可取消**）。
+- ⚙ 自動派工複製範本活動時，沿用範本「截止日離活動日幾天」；若算出的時間已過則不設截止。
+- **要先跑的 SQL**：`SQL/60-registration-deadline.sql`。**必須先跑再 push**，否則報名頁會因為查不到新欄位而打不開。部署：Dashboard `index.html`、`index.html`、`event-admin.html`、`registrant-api`、`events-admin-api`、`dispatch-run`。
+- 📄 權限審查：已對照實際 RLS 清單（`pg_policies`），見 DECISIONS D-20261011-01。
+
+## 2026.10.11-1　安全與穩定性修補（審查後）
+- 🖥 **報名名單分頁讀取**：Dashboard 報名者名單與其後的匯出，不再被 1000 筆上限截斷。背景徽章輪詢在頁面不可見時暫停。
+- ⚙ **認領名額防超收**：`claim_task`、`claim_subtask` 寫入後再核對名額，超出者自動撤銷並回「已額滿」。
+- ⚙ **報名檢查**：`registrant-api` 活動未啟用時不能報名／修改；單次最多 20 人；姓名 100、電話 40、備註 1000 字、`extra_data` 8000 字上限。
+- ⚙ **錯誤訊息**：所有 Edge Function 的 500 錯誤改回通用訊息，細節只寫進伺服器日誌；`dispatch-run` 密鑰改固定時間比較。
+- **覆蓋規則維持不變**（D-20261010-05）。**無 SQL**。部署：Dashboard `index.html`＋13 個 Edge Function（含 `dispatch-run`）。
+
 ## 2026.10.10-4
 - 🖥⚙ **自動派工**：新增 Dashboard「🤖 自動派工」與 Edge Function `dispatch-run`。依「派工規則」（行事曆標題關鍵字、指定行事曆項目、仙佛紀念日、農曆初一／十五），在來源日期前的「提前天數」內自動：複製範本活動建立報名表、依工作清單（`task_job_presets`）建立單次工作並指定群組、推送 LINE 給群組成員，並寫入 `dispatch_log`（每條規則＋來源只派一次）。每天台灣 06:00 由 GitHub Actions `dispatch-daily.yml` 呼叫；Dashboard 另有「預覽」「立即執行」。見 D-20261010-04。
 - **要先跑的 SQL**：`SQL/59-auto-dispatch.sql`（`dispatch_rules`、`dispatch_log`）。

@@ -181,7 +181,7 @@ serve(async (req) => {
       case "list_events": {
         let evQuery = supabase
           .from("events")
-          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging")
+          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging, registration_deadline")
           .order("event_date", { ascending: false });
         if (!isGlobalAdmin) evQuery = evQuery.in("altar_id", managedAltarIds);
         const { data: events, error } = await evQuery;
@@ -253,6 +253,11 @@ serve(async (req) => {
         if ("altar_id" in body) extras.altar_id = body.altar_id || null;
         if ("offers_transport" in body) extras.offers_transport = !!body.offers_transport;
         if ("offers_lodging" in body) extras.offers_lodging = !!body.offers_lodging;
+        if ("registration_deadline" in body) {
+          const dl = body.registration_deadline;
+          if (dl && Number.isNaN(Date.parse(dl))) return json({ error: "報名截止時間格式不正確。" }, 400);
+          extras.registration_deadline = dl ? new Date(dl).toISOString() : null;
+        }
         const groupIds: string[] = Array.isArray(body.group_ids) ? body.group_ids : [];
 
         if (!name) return json({ error: "請填寫活動名稱。" }, 400);
@@ -341,6 +346,6 @@ serve(async (req) => {
     }
   } catch (err) {
     console.error(err);
-    return json({ error: String(err) }, 500);
+    return json({ error: "伺服器發生錯誤，請稍後再試。Server error." }, 500);
   }
 });

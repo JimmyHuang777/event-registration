@@ -767,6 +767,6 @@ serve(async (req) => {
     }
   } catch (err) {
     console.error(err);
-    return json({ error: String(err) }, 500);
+    return json({ error: "伺服器發生錯誤，請稍後再試。Server error." }, 500);
   }
 });

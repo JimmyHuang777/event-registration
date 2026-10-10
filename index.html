@@ -191,6 +191,7 @@
   }
 
   .submit-btn:hover { background: var(--line-green-dark); }
+  .reg-closed #new-reg-area, .reg-closed #submit-btn { display: none !important; }
   .submit-btn:disabled { background: #C7CAD1; cursor: not-allowed; }
 
   .secondary-actions {
@@ -257,6 +258,7 @@
       <h1 id="event-name">活動報名 Event Registration</h1>
       <p class="event-meta" id="event-meta"></p>
       <p class="event-meta" id="event-description" style="margin-top:10px; display:none;"></p>
+      <p class="event-meta" id="event-deadline" style="margin-top:6px; display:none;"></p>
     </div>
 
     <div class="profile-card">
@@ -826,7 +828,7 @@ async function initLiff() {
     const { data: ev, error: evError } = await withTimeout(
       supabasePublic
         .from('events')
-        .select('id, name, event_date, location, description, form_schema')
+        .select('id, name, event_date, location, description, form_schema, registration_deadline')
         .eq('slug', currentEventSlug)
         .eq('is_active', true)
         .single(),
@@ -860,6 +862,21 @@ async function initLiff() {
       const descEl = document.getElementById('event-description');
       descEl.textContent = ev.description;
       descEl.style.display = 'block';
+    }
+    {
+      const dlEl = document.getElementById('event-deadline');
+      if (ev.registration_deadline) {
+        const t = Date.parse(ev.registration_deadline);
+        const txt = new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+        dlEl.style.display = 'block';
+        if (Date.now() > t) {
+          dlEl.textContent = '報名已截止（' + txt + '）。如需協助請聯繫主辦單位。';
+          dlEl.style.color = '#C0392B'; dlEl.style.fontWeight = '600';
+          document.getElementById('reg-form').classList.add('reg-closed');
+        } else {
+          dlEl.textContent = '報名截止：' + txt;
+        }
+      }
     }
     addAttendeeBlock('');
 
