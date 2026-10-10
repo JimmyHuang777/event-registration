@@ -14,7 +14,7 @@
 3. 在 workflow 加對應的 Deploy step（`supabase functions deploy <name> --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt`）
 
 ## 目前的 Edge Function
-admin-roles-api、altar-team-api、calendar-api、carpool-api、create-liff-app、events-admin-api、flow-admin-api、flow-api、home-api、kitchen-api、lodging-api、meeting-api、profile-api、registrant-api、tasks-admin-api、tasks-api
+admin-roles-api、altar-team-api、calendar-api、carpool-api、create-liff-app、dispatch-run、events-admin-api、flow-admin-api、flow-api、home-api、kitchen-api、lodging-api、meeting-api、profile-api、registrant-api、tasks-admin-api、tasks-api
 
 ## SQL 清單（依編號）
 「已執行」欄請在 Supabase 確認後自行勾選維護。

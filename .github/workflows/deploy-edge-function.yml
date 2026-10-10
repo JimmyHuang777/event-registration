@@ -22,6 +22,7 @@ on:
       - 'supabase/functions/admin-roles-api/**'
       - 'supabase/functions/calendar-api/**'
       - 'supabase/functions/altar-team-api/**'
+      - 'supabase/functions/dispatch-run/**'
 
 jobs:
   deploy:
@@ -115,5 +116,10 @@ jobs:
 
       - name: Deploy altar-team-api Edge Function
         run: supabase functions deploy altar-team-api --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy dispatch-run Edge Function
+        run: supabase functions deploy dispatch-run --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

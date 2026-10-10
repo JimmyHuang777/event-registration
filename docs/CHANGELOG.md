@@ -6,6 +6,22 @@
 ## [未發佈]
 （新的變更先寫這裡）
 
+## 2026.10.10-4
+- 🖥⚙ **自動派工**：新增 Dashboard「🤖 自動派工」與 Edge Function `dispatch-run`。依「派工規則」（行事曆標題關鍵字、指定行事曆項目、仙佛紀念日、農曆初一／十五），在來源日期前的「提前天數」內自動：複製範本活動建立報名表、依工作清單（`task_job_presets`）建立單次工作並指定群組、推送 LINE 給群組成員，並寫入 `dispatch_log`（每條規則＋來源只派一次）。每天台灣 06:00 由 GitHub Actions `dispatch-daily.yml` 呼叫；Dashboard 另有「預覽」「立即執行」。見 D-20261010-04。
+- **要先跑的 SQL**：`SQL/59-auto-dispatch.sql`（`dispatch_rules`、`dispatch_log`）。
+- **要部署／設定**：`dispatch-run`（已加入 `deploy-edge-function.yml`）、新增 `.github/workflows/dispatch-daily.yml`；**Supabase Edge Function secret 與 GitHub secret 都要新增 `DISPATCH_CRON_SECRET`（同一個隨機字串）**；`LINE_CHANNEL_ACCESS_TOKEN` 已有才會推送。
+- 📄 PARITY 新增 P-10（規則管理只在 Dashboard，建議列為例外）。
+
+## 2026.10.10-3
+- 🖥 **P-09**：「新增／編輯活動」表單補上「提供交通（共乘）」「提供住宿」勾選框。
+- 🖥 **P-01**：壇的詳細畫面（天廚組）新增「🍳 食譜／菜單／工作」管理（食譜、菜單、工作的新增／編輯／刪除、指派、完成）。
+- 📱⚙ **P-03**：LIFF 行事曆讓活動管理者新增／編輯／刪除一般行程；`calendar-api` 新增 `save_entry`、`delete_entry`，`month` 回傳 `can_edit`。仙佛紀念日仍只在 Dashboard。
+- 📄 PARITY：P-01、P-03、P-09 補齊；P-07、P-08 拿掉並列為例外。見 D-20261010-03。
+- **無 SQL**。部署：Dashboard `index.html`、`calendar.html`、`calendar-api`（已在 workflow，無需改 workflow）。
+
+## 2026.10.10-2
+- 📱🖥⚙ **新增臨時會議**：沒有排定的會議也能直接新增一場並填寫紀錄、出席、待辦（日期可以是過去，用來補記錄）。做法＝建立「單次」會議類型＋當天場次，所以統計與 LINE 頁面照常運作。`meeting-api` 新增 `create_adhoc_meeting`。見 D-20261010-02。無 SQL。部署：Dashboard `index.html`、`meetings.html`、`meeting-api`。
+
 ## 2026.10.10-1
 - 🖥 Dashboard「溝通共識系統」從只有管理員名單，擴充為完整會議管理：**會議類型**（新增／編輯／刪除）、**場次**（日期區間、類型、狀態篩選；標記出席、紀錄、狀態、待辦事項）、**待辦事項總覽**（所有人，可依狀態／負責人／會議／日期篩選，勾選完成、刪除）、**統計**（依會議類型與個人的出席率、待辦完成率）與**匯出 Excel／出席明細 CSV**。見 D-20261010-01。
 - 📱⚙ LIFF `meetings.html` 與 `meeting-api`：新增**待辦事項總覽**（`list_all_action_items`）、**統計**（`meeting_stats`），場次畫面可切換**過去 30／90／180 天**；`list_upcoming_instances` 改用巢狀查詢，避免出席人數被 1000 筆上限截斷，並限制區間最多 400 天。

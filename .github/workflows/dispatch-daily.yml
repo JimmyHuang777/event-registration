@@ -1,0 +1,19 @@
+name: Auto-dispatch daily
+
+# 每天台灣時間 06:00（UTC 22:00）呼叫 dispatch-run，依「派工規則」自動建立報名表／工作並推送 LINE。
+# 需要 GitHub Secret：DISPATCH_CRON_SECRET（與 Supabase Edge Function secret 同名同值）。
+on:
+  schedule:
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call dispatch-run
+        run: |
+          curl -sS --fail-with-body -X POST "https://ixzvbyxhzttvnheivsoc.functions.supabase.co/dispatch-run" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.DISPATCH_CRON_SECRET }}" \
+            -d '{"action":"run"}'

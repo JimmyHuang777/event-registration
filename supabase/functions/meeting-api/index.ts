@@ -55,6 +55,10 @@
 //   delete_action_item        — remove an item.
 //   list_all_action_items     — every action item of every assignee
 //                               (overview), filter by status / date range.
+//   create_adhoc_meeting      — record a meeting that was never scheduled:
+//                               creates a one-time meeting type + that day's
+//                               instance (invites the group) and returns the
+//                               instance id.
 //   meeting_stats             — attendance rate per meeting type and per
 //                               person + action-item completion, for a
 //                               date range. Same definition as the
@@ -125,6 +129,7 @@ const MANAGER_ACTIONS = new Set([
   "delete_action_item",
   "list_all_action_items",
   "meeting_stats",
+  "create_adhoc_meeting",
 ]);
 
 const MAX_RANGE_DAYS = 400;
@@ -688,6 +693,38 @@ serve(async (req) => {
             meeting_type_name: r.meeting_instances?.meeting_types?.name || "會議",
           })),
         });
+      }
+
+      // ---- A meeting that was never scheduled: one-time type + instance ----
+      case "create_adhoc_meeting": {
+        const { name, date, place, group_id } = body;
+        const cleanName = (name || "").trim();
+        if (!cleanName) return json({ error: "請填寫會議名稱。" }, 400);
+        if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "請選擇日期。" }, 400);
+        const { data: type, error: typeErr } = await supabase
+          .from("meeting_types")
+          .insert({
+            name: cleanName,
+            recurrence: "once",
+            recurrence_detail: {},
+            start_date: date,
+            end_date: date,
+            group_id: group_id || null,
+            place: place ? String(place).trim() : null,
+            is_active: true,
+          })
+          .select()
+          .single();
+        if (typeErr) return json({ error: typeErr.message }, 400);
+        await supabase.rpc("ensure_meeting_instances", { p_from: date, p_to: date });
+        const { data: inst, error: instErr } = await supabase
+          .from("meeting_instances")
+          .select("id")
+          .eq("meeting_type_id", type.id)
+          .eq("meeting_date", date)
+          .single();
+        if (instErr) return json({ error: instErr.message }, 400);
+        return json({ success: true, instance_id: inst.id });
       }
 
       // ---- Attendance + action-item statistics for a date range ----

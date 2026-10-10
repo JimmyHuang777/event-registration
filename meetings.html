@@ -643,6 +643,7 @@ function renderAdminTypes() {
 document.getElementById('admin-types-back-btn').addEventListener('click', () => showScreen('admin-home'));
 
 function openTypeForm(type) {
+  typeFormBack = 'admin-types';
   document.getElementById('admin-type-form-title').textContent = type ? '編輯會議類型' : '新增會議類型';
   const el = document.getElementById('admin-type-form-content');
   const rec = type?.recurrence || 'weekly';
@@ -750,7 +751,8 @@ function openTypeForm(type) {
   showScreen('admin-type-form');
 }
 
-document.getElementById('admin-type-form-back-btn').addEventListener('click', () => showScreen('admin-types'));
+let typeFormBack = 'admin-types';
+document.getElementById('admin-type-form-back-btn').addEventListener('click', () => showScreen(typeFormBack));
 
 /* ---------- Upcoming instances (record attendance/minutes/items) ---------- */
 
@@ -785,13 +787,17 @@ function renderAdminInstances(instances) {
   const rangeBar = '<div class="filter-row"><select id="instance-range">' +
     Object.entries(INSTANCE_RANGES).map(([k, v]) => `<option value="${k}" ${k === instanceRange ? 'selected' : ''}>${v.label}</option>`).join('') +
     '</select></div>';
-  const bindRange = () => document.getElementById('instance-range').addEventListener('change', (e) => { instanceRange = e.target.value; loadAdminInstances(); });
+  const adhocBtn = '<button type="button" class="submit-btn" id="adhoc-btn" style="width:100%; margin:0 0 12px;">＋ 新增臨時會議（沒排定也能記錄）</button>';
+  const bindRange = () => {
+    document.getElementById('instance-range').addEventListener('change', (e) => { instanceRange = e.target.value; loadAdminInstances(); });
+    document.getElementById('adhoc-btn').addEventListener('click', openAdhocForm);
+  };
   if (instances.length === 0) {
-    el.innerHTML = rangeBar + `<div class="empty-state">${INSTANCE_RANGES[instanceRange].label}內沒有會議場次。請先在「會議類型」建立至少一個啟用中的類型。</div>`;
+    el.innerHTML = adhocBtn + rangeBar + `<div class="empty-state">${INSTANCE_RANGES[instanceRange].label}內沒有會議場次。請先在「會議類型」建立至少一個啟用中的類型。</div>`;
     bindRange();
     return;
   }
-  el.innerHTML = rangeBar + instances.map(i => `
+  el.innerHTML = adhocBtn + rangeBar + instances.map(i => `
     <div class="meeting-card" data-instance-id="${i.id}">
       <div class="meeting-card-top">
         <div class="meeting-card-name">${escapeHtml(i.type_name)}</div>
@@ -963,6 +969,44 @@ document.getElementById('admin-instance-detail-back-btn').addEventListener('clic
   if (instanceBackScreen === 'admin-instances') loadAdminInstances();
   else if (instanceBackScreen === 'admin-items') loadAdminItems();
 });
+
+/* ---------- Ad-hoc meeting (never scheduled) ---------- */
+
+async function openAdhocForm() {
+  typeFormBack = 'admin-instances';
+  document.getElementById('admin-type-form-title').textContent = '新增臨時會議';
+  const el = document.getElementById('admin-type-form-content');
+  if (!allGroups.length) {
+    try { allGroups = (await callApi('list_groups')).groups || []; } catch (err) { /* group stays optional */ }
+  }
+  const today = dateOffset(0);
+  el.innerHTML = `
+    <div class="info-card" style="font-size:12.5px;">沒有排定的會議也能記錄：建立後直接進入該場，填寫紀錄、出席與待辦事項。日期可以是過去（補記錄）。</div>
+    <div class="field"><label>會議名稱</label><input type="text" id="ah-name" placeholder="例：臨時道務會議"></div>
+    <div class="field"><label>日期</label><input type="date" id="ah-date" value="${today}"></div>
+    <div class="field"><label>地點 <span class="hint">選填</span></label><input type="text" id="ah-place"></div>
+    <div class="field"><label>邀請群組 <span class="hint">選填；出席者自動帶入群組成員，沒選就不邀請</span></label>
+      <select id="ah-group"><option value="">（不邀請）</option>${allGroups.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}</select></div>
+    <p class="modal-error" id="ah-error"></p>
+    <button type="button" class="submit-btn" id="ah-save-btn" style="width:100%;">建立並開啟</button>`;
+  document.getElementById('ah-save-btn').addEventListener('click', async (e) => {
+    const errEl = document.getElementById('ah-error');
+    errEl.style.display = 'none';
+    const name = document.getElementById('ah-name').value.trim(), date = document.getElementById('ah-date').value;
+    if (!name) { errEl.textContent = '請填寫會議名稱。'; errEl.style.display = 'block'; return; }
+    if (!date) { errEl.textContent = '請選擇日期。'; errEl.style.display = 'block'; return; }
+    e.target.disabled = true;
+    try {
+      const { instance_id } = await callApi('create_adhoc_meeting', {
+        name, date, place: document.getElementById('ah-place').value.trim(), group_id: document.getElementById('ah-group').value || null,
+      });
+      openAdminInstanceDetail(instance_id, 'admin-instances');
+    } catch (err) {
+      errEl.textContent = err.message; errEl.style.display = 'block'; e.target.disabled = false;
+    }
+  });
+  showScreen('admin-type-form');
+}
 
 /* ---------- All action items (overview) ---------- */
 
