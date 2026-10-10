@@ -127,6 +127,18 @@
   .type-card-meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
   .type-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
+  .filter-row { display: flex; gap: 8px; margin: 4px 0 12px; flex-wrap: wrap; }
+  .filter-row select { flex: 1; min-width: 120px; padding: 9px 10px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 13.5px; font-family: inherit; background: var(--paper); }
+  .stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  .stat-cards div { background: var(--canvas); border-radius: 12px; padding: 12px 14px; }
+  .stat-cards b { display: block; font-size: 22px; }
+  .stat-cards span { font-size: 12px; color: var(--ink-soft); }
+  .stat-row { border-top: 1px solid var(--line); padding: 9px 0; font-size: 13.5px; }
+  .stat-row:first-child { border-top: none; }
+  .stat-row .top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+  .stat-row .sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .stat-bar { height: 6px; border-radius: 3px; background: var(--line); margin-top: 6px; overflow: hidden; }
+  .stat-bar i { display: block; height: 100%; background: var(--line-green); }
   .add-item-row { display: flex; gap: 8px; margin-top: 10px; }
   .add-item-row input { flex: 1; }
 </style>
@@ -230,11 +242,33 @@
     <div class="header">
       <button type="button" class="back-btn" id="admin-instances-back-btn">‹</button>
       <div class="titles">
-        <h1>📅 即將到來的會議 Upcoming Meetings</h1>
-        <p>未來 60 天內已排程的會議場次</p>
+        <h1>📅 會議場次 Meetings</h1>
+        <p>可切換查看未來或過去的場次</p>
       </div>
     </div>
     <div class="content" id="admin-instances-content"></div>
+  </div>
+
+  <div id="admin-items-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-items-back-btn">‹</button>
+      <div class="titles">
+        <h1>📋 待辦事項總覽 All Action Items</h1>
+        <p>所有人的待辦事項</p>
+      </div>
+    </div>
+    <div class="content" id="admin-items-content"></div>
+  </div>
+
+  <div id="admin-stats-screen" class="board-screen">
+    <div class="header">
+      <button type="button" class="back-btn" id="admin-stats-back-btn">‹</button>
+      <div class="titles">
+        <h1>📊 統計 Statistics</h1>
+        <p>出席率與待辦完成率</p>
+      </div>
+    </div>
+    <div class="content" id="admin-stats-content"></div>
   </div>
 
   <div id="admin-instance-detail-screen" class="board-screen">
@@ -507,7 +541,9 @@ function renderAdminHome() {
   const listEl = document.getElementById('admin-home-list');
   const items = [
     { key: 'types', title: '🗂️ 會議類型 Meeting Types', desc: '新增／編輯／刪除會議類型與週期', color: '#6B5FB4' },
-    { key: 'instances', title: '📅 即將到來的會議 Upcoming Meetings', desc: '記錄出席、撰寫紀錄、指派待辦事項', color: '#2E90FA' },
+    { key: 'instances', title: '📅 會議場次 Meetings', desc: '記錄出席、撰寫紀錄、指派待辦事項（可查看過去的場次）', color: '#2E90FA' },
+    { key: 'items', title: '📋 待辦事項總覽 All Action Items', desc: '查看所有人的待辦事項、更新完成狀態', color: '#F79009' },
+    { key: 'stats', title: '📊 統計 Statistics', desc: '各會議／各人的出席率、待辦完成率', color: '#06C755' },
   ];
   listEl.innerHTML = '';
   items.forEach(r => {
@@ -525,6 +561,8 @@ function renderAdminHome() {
     card.addEventListener('click', () => {
       if (r.key === 'types') { showScreen('admin-types'); loadAdminTypes(); }
       else if (r.key === 'instances') { showScreen('admin-instances'); loadAdminInstances(); }
+      else if (r.key === 'items') { showScreen('admin-items'); loadAdminItems(); }
+      else if (r.key === 'stats') { showScreen('admin-stats'); loadAdminStats(); }
     });
     listEl.appendChild(card);
   });
@@ -716,11 +754,26 @@ document.getElementById('admin-type-form-back-btn').addEventListener('click', ()
 
 /* ---------- Upcoming instances (record attendance/minutes/items) ---------- */
 
+const INSTANCE_RANGES = {
+  future60: { label: '未來 60 天', from: 0, to: 60 },
+  past30: { label: '過去 30 天', from: -30, to: 0 },
+  past90: { label: '過去 90 天', from: -90, to: 0 },
+  past180: { label: '過去 180 天', from: -180, to: 0 },
+  around: { label: '前後各 30 天', from: -30, to: 30 },
+};
+let instanceRange = 'future60';
+function dateOffset(days) {
+  const d = new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 async function loadAdminInstances() {
   const el = document.getElementById('admin-instances-content');
   el.innerHTML = '<div class="empty-note">載入中…</div>';
   try {
-    const { instances } = await callApi('list_upcoming_instances');
+    const r = INSTANCE_RANGES[instanceRange];
+    const { instances } = await callApi('list_upcoming_instances', { from: dateOffset(r.from), to: dateOffset(r.to) });
     renderAdminInstances(instances || []);
   } catch (err) {
     el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
@@ -729,11 +782,16 @@ async function loadAdminInstances() {
 
 function renderAdminInstances(instances) {
   const el = document.getElementById('admin-instances-content');
+  const rangeBar = '<div class="filter-row"><select id="instance-range">' +
+    Object.entries(INSTANCE_RANGES).map(([k, v]) => `<option value="${k}" ${k === instanceRange ? 'selected' : ''}>${v.label}</option>`).join('') +
+    '</select></div>';
+  const bindRange = () => document.getElementById('instance-range').addEventListener('change', (e) => { instanceRange = e.target.value; loadAdminInstances(); });
   if (instances.length === 0) {
-    el.innerHTML = '<div class="empty-state">未來 60 天內沒有排定的會議。請先在「會議類型」建立至少一個啟用中的類型。</div>';
+    el.innerHTML = rangeBar + `<div class="empty-state">${INSTANCE_RANGES[instanceRange].label}內沒有會議場次。請先在「會議類型」建立至少一個啟用中的類型。</div>`;
+    bindRange();
     return;
   }
-  el.innerHTML = instances.map(i => `
+  el.innerHTML = rangeBar + instances.map(i => `
     <div class="meeting-card" data-instance-id="${i.id}">
       <div class="meeting-card-top">
         <div class="meeting-card-name">${escapeHtml(i.type_name)}</div>
@@ -746,14 +804,17 @@ function renderAdminInstances(instances) {
     </div>
   `).join('');
 
+  bindRange();
   el.querySelectorAll('.meeting-card').forEach(card => {
-    card.addEventListener('click', () => openAdminInstanceDetail(card.dataset.instanceId));
+    card.addEventListener('click', () => openAdminInstanceDetail(card.dataset.instanceId, 'admin-instances'));
   });
 }
 
 document.getElementById('admin-instances-back-btn').addEventListener('click', () => showScreen('admin-home'));
 
-async function openAdminInstanceDetail(instanceId) {
+let instanceBackScreen = 'admin-instances';
+async function openAdminInstanceDetail(instanceId, from) {
+  if (from) instanceBackScreen = from;
   showScreen('admin-instance-detail');
   const el = document.getElementById('admin-instance-detail-content');
   el.innerHTML = '<div class="empty-note">載入中…</div>';
@@ -897,7 +958,143 @@ async function openAdminInstanceDetail(instanceId) {
   }
 }
 
-document.getElementById('admin-instance-detail-back-btn').addEventListener('click', () => showScreen('admin-instances'));
+document.getElementById('admin-instance-detail-back-btn').addEventListener('click', () => {
+  showScreen(instanceBackScreen);
+  if (instanceBackScreen === 'admin-instances') loadAdminInstances();
+  else if (instanceBackScreen === 'admin-items') loadAdminItems();
+});
+
+/* ---------- All action items (overview) ---------- */
+
+let adminItems = [];
+let itemsFilter = { status: 'open', who: '' };
+
+async function loadAdminItems() {
+  const el = document.getElementById('admin-items-content');
+  el.innerHTML = '<div class="empty-note">載入中…</div>';
+  try {
+    const { action_items } = await callApi('list_all_action_items', { status: itemsFilter.status });
+    adminItems = action_items || [];
+    renderAdminItems();
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderAdminItems() {
+  const el = document.getElementById('admin-items-content');
+  const people = new Map();
+  adminItems.forEach(it => { if (it.assignee_user_id) people.set(it.assignee_user_id, it.assignee_name || '—'); });
+  const w = itemsFilter.who;
+  const rows = adminItems.filter(it => !w || (w === '__none' ? !it.assignee_user_id : it.assignee_user_id === w))
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === 'open' ? -1 : 1) || String(b.meeting_date).localeCompare(String(a.meeting_date)));
+  const done = rows.filter(r => r.status === 'done').length;
+
+  let html = `<div class="filter-row">
+      <select id="items-status">
+        <option value="open" ${itemsFilter.status === 'open' ? 'selected' : ''}>未完成</option>
+        <option value="done" ${itemsFilter.status === 'done' ? 'selected' : ''}>已完成</option>
+        <option value="" ${itemsFilter.status === '' ? 'selected' : ''}>全部</option>
+      </select>
+      <select id="items-who">
+        <option value="">所有負責人</option>
+        <option value="__none" ${w === '__none' ? 'selected' : ''}>未指派</option>
+        ${[...people].map(([id, name]) => `<option value="${id}" ${w === id ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+      </select>
+    </div>`;
+  if (rows.length === 0) {
+    html += '<div class="empty-state">沒有符合的待辦事項。</div>';
+  } else {
+    html += `<div class="section-title">共 ${rows.length} 筆，已完成 ${done}</div>` + rows.map(it => `
+      <div class="item-row" data-item-id="${it.id}" data-instance-id="${it.meeting_instance_id}">
+        <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} class="all-item-checkbox">
+        <div style="flex:1;">
+          <div class="item-content ${it.status === 'done' ? 'done' : ''}">${escapeHtml(it.content)}</div>
+          <div class="item-meta">${it.assignee_name ? escapeHtml(it.assignee_name) : '未指派'} · ${escapeHtml(it.meeting_type_name)} · ${escapeHtml(it.meeting_date || '')}</div>
+          <div style="margin-top:6px; display:flex; gap:8px;">
+            <button type="button" class="btn-text open-item-meeting-btn">開啟會議</button>
+            <button type="button" class="btn-text danger delete-all-item-btn">刪除</button>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+  el.innerHTML = html;
+
+  document.getElementById('items-status').addEventListener('change', (e) => { itemsFilter.status = e.target.value; loadAdminItems(); });
+  document.getElementById('items-who').addEventListener('change', (e) => { itemsFilter.who = e.target.value; renderAdminItems(); });
+  el.querySelectorAll('.all-item-checkbox').forEach(cb => {
+    cb.addEventListener('change', async (e) => {
+      const itemId = e.target.closest('.item-row').dataset.itemId;
+      e.target.disabled = true;
+      try {
+        await callApi('update_action_item_status', { item_id: itemId, status: e.target.checked ? 'done' : 'open' });
+        await loadAdminItems();
+      } catch (err) {
+        alert('更新失敗：' + err.message);
+        e.target.disabled = false;
+        e.target.checked = !e.target.checked;
+      }
+    });
+  });
+  el.querySelectorAll('.open-item-meeting-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => openAdminInstanceDetail(e.target.closest('.item-row').dataset.instanceId, 'admin-items'));
+  });
+  el.querySelectorAll('.delete-all-item-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      if (!confirm('確定要刪除此待辦事項嗎？')) return;
+      try {
+        await callApi('delete_action_item', { item_id: e.target.closest('.item-row').dataset.itemId });
+        await loadAdminItems();
+      } catch (err) {
+        alert('刪除失敗：' + err.message);
+      }
+    });
+  });
+}
+
+document.getElementById('admin-items-back-btn').addEventListener('click', () => showScreen('admin-home'));
+
+/* ---------- Statistics ---------- */
+
+const STATS_RANGES = { 30: '過去 30 天', 90: '過去 90 天', 180: '過去 180 天', 365: '過去 365 天' };
+let statsRange = 90;
+
+function statRow(title, sub, rate) {
+  return `<div class="stat-row"><div class="top"><span>${escapeHtml(title)}</span><span>${rate == null ? '—' : rate + '%'}</span></div>
+    <div class="sub">${sub}</div>${rate == null ? '' : `<div class="stat-bar"><i style="width:${Math.min(100, rate)}%"></i></div>`}</div>`;
+}
+
+async function loadAdminStats() {
+  const el = document.getElementById('admin-stats-content');
+  el.innerHTML = '<div class="empty-note">統計中…</div>';
+  try {
+    const s = await callApi('meeting_stats', { from: dateOffset(-statsRange), to: dateOffset(0) });
+    const tot = s.by_type.reduce((a, t) => ({ i: a.i + t.invited, a: a.a + t.attended }), { i: 0, a: 0 });
+    const overall = tot.i ? Math.round(tot.a * 1000 / tot.i) / 10 : null;
+    let html = `<div class="filter-row"><select id="stats-range">${Object.entries(STATS_RANGES).map(([k, v]) => `<option value="${k}" ${+k === statsRange ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="stat-cards">
+        <div><b>${s.held}</b><span>已召開場次</span></div>
+        <div><b>${overall == null ? '—' : overall + '%'}</b><span>整體出席率（${tot.a}/${tot.i}）</span></div>
+        <div><b>${s.items.total}</b><span>待辦事項</span></div>
+        <div><b>${s.items.rate == null ? '—' : s.items.rate + '%'}</b><span>待辦完成率（${s.items.done}/${s.items.total}）</span></div>
+      </div>
+      <div class="info-card" style="font-size:12px; color:var(--ink-soft);">只計入「日期不晚於今天、且未取消」的場次；出席率＝出席人次 ÷ 受邀人次。</div>
+      <div class="section-title">依會議類型</div>`;
+    html += s.by_type.length
+      ? s.by_type.map(t => statRow(t.name, `${t.held} 場 · 出席 ${t.attended} / ${t.invited} 人次`, t.rate)).join('')
+      : '<div class="empty-note">這段期間沒有已召開的場次。</div>';
+    html += '<div class="section-title">依個人（出席率由低到高）</div>';
+    html += s.by_person.length
+      ? s.by_person.map(p => statRow(p.name, `出席 ${p.attended} / ${p.invited} · 待辦 未完成 ${p.items_open}／已完成 ${p.items_done}`, p.rate)).join('')
+      : '<div class="empty-note">沒有資料。</div>';
+    el.innerHTML = html;
+    document.getElementById('stats-range').addEventListener('change', (e) => { statsRange = +e.target.value; loadAdminStats(); });
+  } catch (err) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+document.getElementById('admin-stats-back-btn').addEventListener('click', () => showScreen('admin-home'));
 
 /* ================= LIFF BOOT ================= */
 

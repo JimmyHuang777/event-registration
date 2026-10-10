@@ -35,6 +35,7 @@ admin-roles-api、altar-team-api、calendar-api、carpool-api、create-liff-app�
 | 54 | review-leader-job-admins | 組長／工作管理者審核 | ☐ |
 | 55 | subtask-checklist-fields | 子任務的時間／地點／負責人／檢核人欄位 | ☐ |
 | 56 | altar-team-rules-handover-swaps | 各組工作細則（6W）、交接項目、整組對調 | ☐ |
+| 58 | train-timetable-ruisui | 瑞穗站完整時刻（去程 28 班、回程 28 班；第三方資料，需核對） | ☐ |
 | 57 | train-direction | 火車時刻分去程（south）／回程（north）；arrive_time 改可空 | ☐ |
 
 > 41–44 號在本文件建立時未列入清單，若有請補上。

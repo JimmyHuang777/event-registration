@@ -53,6 +53,12 @@
 //   add_action_item          — add a follow-up item to an instance.
 //   update_action_item_status — admin override of an item's status.
 //   delete_action_item        — remove an item.
+//   list_all_action_items     — every action item of every assignee
+//                               (overview), filter by status / date range.
+//   meeting_stats             — attendance rate per meeting type and per
+//                               person + action-item completion, for a
+//                               date range. Same definition as the
+//                               Dashboard's 統計 tab (see mtComputeStats).
 //
 // DEPLOY: this repo's GitHub Actions workflow deploys it
 // automatically on push to supabase/functions/meeting-api/**.
@@ -117,7 +123,72 @@ const MANAGER_ACTIONS = new Set([
   "add_action_item",
   "update_action_item_status",
   "delete_action_item",
+  "list_all_action_items",
+  "meeting_stats",
 ]);
+
+const MAX_RANGE_DAYS = 400;
+
+// PostgREST returns at most 1000 rows per request: page through them all.
+// `build` must return a fresh query each call.
+async function fetchAll(build: () => any): Promise<any[]> {
+  const out: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().range(from, from + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+const pct = (a: number, b: number) => (b ? Math.round((a * 1000) / b) / 10 : null);
+
+// Stats definition — keep identical to mtComputeStats() in the Dashboard:
+//   counted meetings = in range, date <= today, status != cancelled
+//   attendance rate  = attended / invited (person-times)
+//   action items     = all items in range (cancelled meetings included)
+function computeStats(raw: { types: any[]; instances: any[]; attendance: any[]; items: any[] }, today: string) {
+  const counted = new Set(raw.instances.filter((i) => i.meeting_date <= today && i.status !== "cancelled").map((i) => i.id));
+  const typeName = new Map(raw.types.map((t) => [t.id, t.name]));
+  const instType = new Map(raw.instances.map((i) => [i.id, i.meeting_type_id]));
+  const byType = new Map<string, any>();
+  const byPerson = new Map<string, any>();
+  const T = (id: string) => {
+    if (!byType.has(id)) byType.set(id, { type_id: id, name: typeName.get(id) || "會議", held: 0, invited: 0, attended: 0 });
+    return byType.get(id);
+  };
+  const P = (id: string, name?: string) => {
+    if (!byPerson.has(id)) byPerson.set(id, { user_id: id, name: name || "—", invited: 0, attended: 0, items_open: 0, items_done: 0 });
+    return byPerson.get(id);
+  };
+  raw.instances.forEach((i) => { if (counted.has(i.id)) T(i.meeting_type_id).held++; });
+  raw.attendance.forEach((a) => {
+    if (!counted.has(a.meeting_instance_id)) return;
+    const t = T(instType.get(a.meeting_instance_id));
+    const p = P(a.user_id, a.users?.display_name);
+    t.invited++; p.invited++;
+    if (a.attended) { t.attended++; p.attended++; }
+  });
+  let open = 0, done = 0;
+  raw.items.forEach((it) => {
+    if (it.status === "done") done++; else open++;
+    if (it.assignee_user_id) {
+      const p = P(it.assignee_user_id, it.users?.display_name);
+      if (it.status === "done") p.items_done++; else p.items_open++;
+    }
+  });
+  const fin = (o: any) => Object.assign(o, { rate: pct(o.attended, o.invited) });
+  const zh = (a: string, b: string) => a.localeCompare(b, "zh-Hant");
+  return {
+    held: counted.size,
+    by_type: [...byType.values()].map(fin).sort((a, b) => zh(a.name, b.name)),
+    by_person: [...byPerson.values()].map(fin).sort(
+      (a, b) => (b.invited ? 1 : 0) - (a.invited ? 1 : 0) || (a.rate ?? 101) - (b.rate ?? 101) || zh(a.name, b.name),
+    ),
+    items: { total: open + done, done, open, rate: pct(done, open + done) },
+  };
+}
 
 async function pushLineNotification(lineUserIds: string[], text: string) {
   if (!LINE_CHANNEL_ACCESS_TOKEN || lineUserIds.length === 0) return;
@@ -441,37 +512,33 @@ serve(async (req) => {
       case "list_upcoming_instances": {
         const from = body.from || taipeiToday();
         const to = body.to || new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+        if (from > to) return json({ error: "日期區間不正確。" }, 400);
+        if ((new Date(to).getTime() - new Date(from).getTime()) / 86400000 > MAX_RANGE_DAYS) {
+          return json({ error: `區間最多 ${MAX_RANGE_DAYS} 天。` }, 400);
+        }
         await supabase.rpc("ensure_meeting_instances", { p_from: from, p_to: to });
 
-        const { data: instances, error } = await supabase
-          .from("meeting_instances")
-          .select("id, meeting_date, status, notes, meeting_type_id")
-          .gte("meeting_date", from)
-          .lte("meeting_date", to)
-          .order("meeting_date", { ascending: true });
-        if (error) return json({ error: error.message }, 400);
+        // Types + attendance are embedded, so counts can't be cut off by the
+        // 1000-row response limit (a long range × a big group easily exceeds it).
+        const instances = await fetchAll(() =>
+          supabase
+            .from("meeting_instances")
+            .select("id, meeting_date, status, notes, meeting_type_id, meeting_types(name, place), meeting_attendance(attended)")
+            .gte("meeting_date", from)
+            .lte("meeting_date", to)
+            .order("meeting_date", { ascending: true })
+            .order("id", { ascending: true })
+        );
 
-        const typeIds = [...new Set((instances || []).map((i: any) => i.meeting_type_id))];
-        const { data: types } = typeIds.length
-          ? await supabase.from("meeting_types").select("id, name, place").in("id", typeIds)
-          : { data: [] };
-        const typeById = new Map((types || []).map((t: any) => [t.id, t]));
-
-        const instanceIds = (instances || []).map((i: any) => i.id);
-        const { data: attendance } = instanceIds.length
-          ? await supabase.from("meeting_attendance").select("meeting_instance_id, attended").in("meeting_instance_id", instanceIds)
-          : { data: [] };
-
-        const result = (instances || []).map((i: any) => {
-          const t = typeById.get(i.meeting_type_id);
-          const rows = (attendance || []).filter((a: any) => a.meeting_instance_id === i.id);
+        const result = instances.map((i: any) => {
+          const rows = i.meeting_attendance || [];
           return {
             id: i.id,
             meeting_date: i.meeting_date,
             status: i.status,
             has_notes: !!i.notes,
-            type_name: t?.name || "會議",
-            place: t?.place || null,
+            type_name: i.meeting_types?.name || "會議",
+            place: i.meeting_types?.place || null,
             invited_count: rows.length,
             attended_count: rows.filter((r: any) => r.attended).length,
           };
@@ -593,6 +660,53 @@ serve(async (req) => {
         const { error } = await supabase.from("meeting_action_items").delete().eq("id", item_id);
         if (error) return json({ error: error.message }, 400);
         return json({ success: true });
+      }
+
+      // ---- Every action item, every assignee (overview) ----
+      case "list_all_action_items": {
+        const { status, from, to } = body;
+        const rows = await fetchAll(() => {
+          let q = supabase
+            .from("meeting_action_items")
+            .select("id, content, status, assignee_user_id, created_at, meeting_instance_id, users(display_name), meeting_instances!inner(meeting_date, meeting_type_id, meeting_types(name))")
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: true });
+          if (status === "open" || status === "done") q = q.eq("status", status);
+          if (from) q = q.gte("meeting_instances.meeting_date", from);
+          if (to) q = q.lte("meeting_instances.meeting_date", to);
+          return q;
+        });
+        return json({
+          action_items: rows.map((r: any) => ({
+            id: r.id,
+            content: r.content,
+            status: r.status,
+            assignee_user_id: r.assignee_user_id,
+            assignee_name: r.users?.display_name || null,
+            meeting_instance_id: r.meeting_instance_id,
+            meeting_date: r.meeting_instances?.meeting_date || null,
+            meeting_type_name: r.meeting_instances?.meeting_types?.name || "會議",
+          })),
+        });
+      }
+
+      // ---- Attendance + action-item statistics for a date range ----
+      case "meeting_stats": {
+        const today = taipeiToday();
+        const from = body.from || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+        const to = body.to || today;
+        if (from > to) return json({ error: "日期區間不正確。" }, 400);
+        if ((new Date(to).getTime() - new Date(from).getTime()) / 86400000 > MAX_RANGE_DAYS) {
+          return json({ error: `區間最多 ${MAX_RANGE_DAYS} 天。` }, 400);
+        }
+        await supabase.rpc("ensure_meeting_instances", { p_from: from, p_to: to });
+        const [types, instances, attendance, items] = await Promise.all([
+          fetchAll(() => supabase.from("meeting_types").select("id, name").order("id", { ascending: true })),
+          fetchAll(() => supabase.from("meeting_instances").select("id, meeting_date, status, meeting_type_id").gte("meeting_date", from).lte("meeting_date", to).order("id", { ascending: true })),
+          fetchAll(() => supabase.from("meeting_attendance").select("id, meeting_instance_id, user_id, attended, users(display_name), meeting_instances!inner(meeting_date)").gte("meeting_instances.meeting_date", from).lte("meeting_instances.meeting_date", to).order("id", { ascending: true })),
+          fetchAll(() => supabase.from("meeting_action_items").select("id, status, assignee_user_id, users(display_name), meeting_instances!inner(meeting_date)").gte("meeting_instances.meeting_date", from).lte("meeting_instances.meeting_date", to).order("id", { ascending: true })),
+        ]);
+        return json({ from, to, ...computeStats({ types, instances, attendance, items }, today) });
       }
 
       default:

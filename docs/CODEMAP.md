@@ -182,13 +182,15 @@
 | `list_meeting_types` | `meeting_types`, `task_groups` |
 | `save_meeting_type` | `meeting_types` |
 | `delete_meeting_type` | `meeting_types` |
-| `list_upcoming_instances` | `meeting_instances`, `meeting_types`, `meeting_attendance` |
+| `list_upcoming_instances` | `meeting_instances` |
 | `get_instance_detail` | `meeting_instances`, `meeting_types`, `meeting_attendance`, `users`, `meeting_action_items` |
 | `mark_attendance` | `meeting_attendance` |
 | `save_minutes` | `meeting_instances` |
 | `add_action_item` | `meeting_action_items`, `users` |
 | `update_action_item_status` | `meeting_action_items` |
 | `delete_action_item` | `meeting_action_items` |
+| `list_all_action_items` | `meeting_action_items` |
+| `meeting_stats` | `meeting_types`, `meeting_instances`, `meeting_attendance`, `meeting_action_items` |
 
 ### profile-api
 
@@ -269,7 +271,7 @@
 | index.html | 活動報名 Event Registration | `registrant-api`, `profile-api` | `update_attendee`, `cancel_registration`, `get_my_data`, `register_for_event`, `delete_my_event_registrations` |
 | kitchen.html | 天廚 Kitchen | `kitchen-api` | `list_my_kitchen_altars`, `list_recipes`, `delete_recipe`, `save_recipe`, `list_menus`, `delete_menu`, `save_menu`, `list_tasks`, `list_altar_members`, `add_task`, `claim_task`, `complete_task`, `unclaim_task`, `delete_task`, `whoami` |
 | lodging.html | 住宿 Lodging | `lodging-api` | `save_host_profile`, `list_active_events`, `list_my_offers`, `update_offer_status`, `delete_offer`, `create_offer`, `get_my_lodging_request`, `complete_lodging_request`, `cancel_lodging_request`, `create_lodging_request`, `list_offers_for_event`, `list_requests_for_event`, `unassign_lodging_request`, `mark_offer_available`, `manager_delete_offer`, `assign_lodging_request`, `manager_delete_lodging_request`, `whoami` |
-| meetings.html | 溝通共識 Meetings | `meeting-api` | `list_my_meetings`, `get_meeting`, `check_in`, `complete_action_item`, `list_my_action_items`, `list_meeting_types`, `list_groups`, `delete_meeting_type`, `save_meeting_type`, `list_upcoming_instances`, `get_instance_detail`, `save_minutes`, `mark_attendance`, `update_action_item_status`, `delete_action_item`, `add_action_item`, `whoami` |
+| meetings.html | 溝通共識 Meetings | `meeting-api` | `list_my_meetings`, `get_meeting`, `check_in`, `complete_action_item`, `list_my_action_items`, `list_meeting_types`, `list_groups`, `delete_meeting_type`, `save_meeting_type`, `list_upcoming_instances`, `get_instance_detail`, `save_minutes`, `mark_attendance`, `update_action_item_status`, `delete_action_item`, `add_action_item`, `list_all_action_items`, `meeting_stats`, `whoami` |
 | profile.html | 個人資訊 Profile | `profile-api` | `save_profile`, `save_family`, `delete_family`, `get_all` |
 | tasks-admin.html | 工作管理 Job Admin | `tasks-admin-api` | `list_altars`, `whoami`, `list_templates`, `list_groups`, `list_presets`, `toggle_template_active`, `delete_template`, `list_upcoming`, `unassign_subtask`, `search_users`, `assign_subtask`, `perms_list`, `perms_set`, `perms_set_team`, `perms_search_users`, `save_template`, `delete_preset`, `save_preset` |
 | tasks-once.html | 單次任務 One-time Tasks | `tasks-api` | `list_tasks`, `claim_subtask`, `release_subtask`, `complete_subtask` |
@@ -334,82 +336,69 @@
 
 | 檔案 | 動到的資料表 |
 |---|---|
-| 39-single-liff-cleanup.sql | — |
-| 40-personal-profile.sql | `user_profiles`, `family_members` |
-| 45-subtask-slots.sql | `task_subtask_templates`, `task_subtask_completions` |
-| 46-csv-export-templates.sql | `csv_export_templates` |
-| 47-calendar-entries.sql | `calendar_entries` |
-| 48-allow-duplicate-registration.sql | `events`, `registrations` |
-| 49-duplicate-check-by-name.sql | — |
-| 50-calendar-saint-days.sql | `calendar_entries` |
-| 51-train-schedule.sql | `train_schedule` |
-| 52-saint-days-fields.sql | `calendar_entries` |
-| 53-altar-manager-teams.sql | `altar_manager_teams` |
-| 54-review-leader-job-admins.sql | — |
-| 55-subtask-checklist-fields.sql | `task_subtask_templates` |
-| 56-altar-team-rules-handover-swaps.sql | `altar_team_rules`, `altar_team_rule_rows`, `altar_team_handover_items`, `altar_team_swaps` |
-| 57-train-direction.sql | `train_schedule` |
+| 58-train-timetable-ruisui.sql | `train_schedule` |
 
 ## 5. Dashboard（index.html）
 
-- 總行數：8353
+- 總行數：8778
 - 區段（行號）：
 
 | 起始行 | 結束行 | 區段 |
 |---|---|---|
-| 1551 | 1589 | Auth |
-| 1590 | 1631 | Roles & events |
-| 1632 | 1730 | Topbar system dropdowns (道務運作系統 / 壇務運作系統 |
-| 1731 | 1860 | Task view (top-right task-select dropdown) — mirrors |
-| 1861 | 1906 | Content shell (stats + toolbar + table) |
-| 1907 | 1914 | CSV Export |
-| 1915 | 2060 | CSV export with user-added extra columns |
-| 2061 | 2107 | 自動排序（報名名單） |
-| 2108 | 2322 | 交通、住宿、用餐統計表（Excel） |
-| 2323 | 2471 | PDF export (same data + extra columns as the CSV) |
-| 2472 | 2654 | Registrants |
-| 2655 | 2668 | Realtime |
-| 2669 | 2683 | Helpers |
-| 2684 | 3058 | New Event creation (Super Admin only) |
-| 3059 | 3156 | Manage Events panel (Super Admin only) |
-| 3157 | 3409 | 管理者權限矩陣 Admin Permissions (super admin) |
-| 3410 | 3475 | Member Profiles (個人資訊 + 親友資訊) |
-| 3476 | 3484 | Word calendar import: parsing core (pure functions) |
-| 3485 | 3777 | 農曆 → 國曆（瀏覽器內建 Intl 中國曆，免外部資料） |
-| 3778 | 3884 | 火車時刻管理 |
-| 3885 | 4015 | 仙佛紀念日管理 |
-| 4016 | 4202 | 行事曆 Calendar (Dashboard) |
-| 4203 | 4440 | Word import wizard |
-| 4441 | 4546 | 工作細則 Word → 已存範本 |
-| 4547 | 4962 | 工作檢核表（時間／工作組／工作細則／負責人／檢核人）→ 多份工作範本 |
-| 4963 | 5050 | Car Managers (global permission list) |
-| 5051 | 5076 | Event picker (which event's carpool board to view) |
-| 5077 | 5297 | Matching (trips + requests) for one event |
-| 5298 | 5400 | Lodging Managers (global permission list) |
-| 5401 | 5488 | Meeting Admins (global permission list) |
-| 5489 | 5514 | Event picker (which event's lodging board to view) |
-| 5515 | 5914 | Matching (offers + requests) for one event |
-| 5915 | 6061 | Altar detail: 3 team rosters |
-| 6062 | 6332 | 壇各組：工作細則（6W 簡流表）／交接項目／整組對調 |
-| 6333 | 6387 | Dual-calendar date formatting (lunar-javascript) |
-| 6388 | 6448 | Flow list |
-| 6449 | 6601 | Day tabs + item builder |
-| 6602 | 6789 | Flow presets (save/apply a flow sheet's content) |
-| 6790 | 6890 | Flow admins modal |
-| 6891 | 6955 | Templates |
-| 6956 | 7091 | Subtask builder (inside the template form) |
-| 7092 | 7106 | Shared altar picker (used by Task Templates, Events, |
-| 7107 | 7342 | Job presets (save/apply a job's content, minus |
-| 7343 | 7606 | Upcoming instances |
-| 7607 | 7751 | Assignment list (detailed, searchable, exportable — |
-| 7752 | 7806 | Upcoming: calendar sub-view |
-| 7807 | 8161 | Assign modal |
-| 8162 | 8259 | Group members modal |
-| 8260 | 8353 | Job admins modal |
+| 1565 | 1603 | Auth |
+| 1604 | 1645 | Roles & events |
+| 1646 | 1744 | Topbar system dropdowns (道務運作系統 / 壇務運作系統 |
+| 1745 | 1874 | Task view (top-right task-select dropdown) — mirrors |
+| 1875 | 1920 | Content shell (stats + toolbar + table) |
+| 1921 | 1928 | CSV Export |
+| 1929 | 2074 | CSV export with user-added extra columns |
+| 2075 | 2121 | 自動排序（報名名單） |
+| 2122 | 2336 | 交通、住宿、用餐統計表（Excel） |
+| 2337 | 2485 | PDF export (same data + extra columns as the CSV) |
+| 2486 | 2668 | Registrants |
+| 2669 | 2682 | Realtime |
+| 2683 | 2697 | Helpers |
+| 2698 | 3072 | New Event creation (Super Admin only) |
+| 3073 | 3170 | Manage Events panel (Super Admin only) |
+| 3171 | 3423 | 管理者權限矩陣 Admin Permissions (super admin) |
+| 3424 | 3489 | Member Profiles (個人資訊 + 親友資訊) |
+| 3490 | 3498 | Word calendar import: parsing core (pure functions) |
+| 3499 | 3791 | 農曆 → 國曆（瀏覽器內建 Intl 中國曆，免外部資料） |
+| 3792 | 3901 | 火車時刻管理 |
+| 3902 | 4032 | 仙佛紀念日管理 |
+| 4033 | 4219 | 行事曆 Calendar (Dashboard) |
+| 4220 | 4457 | Word import wizard |
+| 4458 | 4563 | 工作細則 Word → 已存範本 |
+| 4564 | 4979 | 工作檢核表（時間／工作組／工作細則／負責人／檢核人）→ 多份工作範本 |
+| 4980 | 5067 | Car Managers (global permission list) |
+| 5068 | 5093 | Event picker (which event's carpool board to view) |
+| 5094 | 5314 | Matching (trips + requests) for one event |
+| 5315 | 5416 | Lodging Managers (global permission list) |
+| 5417 | 5825 | 會議管理（類型／場次／待辦／統計） |
+| 5826 | 5913 | Meeting Admins (global permission list) |
+| 5914 | 5939 | Event picker (which event's lodging board to view) |
+| 5940 | 6339 | Matching (offers + requests) for one event |
+| 6340 | 6486 | Altar detail: 3 team rosters |
+| 6487 | 6757 | 壇各組：工作細則（6W 簡流表）／交接項目／整組對調 |
+| 6758 | 6812 | Dual-calendar date formatting (lunar-javascript) |
+| 6813 | 6873 | Flow list |
+| 6874 | 7026 | Day tabs + item builder |
+| 7027 | 7214 | Flow presets (save/apply a flow sheet's content) |
+| 7215 | 7315 | Flow admins modal |
+| 7316 | 7380 | Templates |
+| 7381 | 7516 | Subtask builder (inside the template form) |
+| 7517 | 7531 | Shared altar picker (used by Task Templates, Events, |
+| 7532 | 7767 | Job presets (save/apply a job's content, minus |
+| 7768 | 8031 | Upcoming instances |
+| 8032 | 8176 | Assignment list (detailed, searchable, exportable — |
+| 8177 | 8231 | Upcoming: calendar sub-view |
+| 8232 | 8586 | Assign modal |
+| 8587 | 8684 | Group members modal |
+| 8685 | 8778 | Job admins modal |
 
-- 頂部入口按鈕：`new-event-btn`（＋ 新增活動 New Event）、`manage-events-btn`（管理活動 Manage）、`manage-tasks-btn`（任務管理 Tasks）、`manage-groups-btn`（群組 Groups）、`manage-flows-btn`（流程表 Flow Sheets）、`manage-home-btn`（群聖家園連結 Home Link）、`manage-calendar-btn`（行事曆 Calendar）、`manage-trains-btn`（🚆 火車時刻 Train Schedule）、`manage-saints-btn`（🕯 仙佛紀念日 Saint Days）、`manage-profiles-btn`（成員資料 Member Profiles）、`manage-admin-roles-btn`（管理員角色 Admin Roles）、`manage-perms-btn`（管理者權限 Admin Permissions）、`manage-altars-btn`（⛩️ 壇 Altars（天廚／佛堂／庶務／住壇））、`manage-carpool-btn`（🚗 共乘 Carpool）、`manage-lodging-btn`（🏠 住宿 Lodging）、`manage-meetings-btn`（🗣️ 溝通共識 Meetings）、`manage-event-admins-btn`（管理 Manage）、`manage-events-close-btn`（關閉）、`manage-job-admins-btn`（管理 Manage）、`new-template-btn`（＋ 新增工作範本 New Template）、`manage-flow-admins-btn`（管理 Manage）、`new-flow-btn`（＋ 新增流程表 New Flow Sheet）、`manage-car-managers-btn`（管理 Manage）、`manage-lodging-managers-btn`（管理 Manage）、`manage-meeting-admins-btn`（管理 Manage）
+- 頂部入口按鈕：`new-event-btn`（＋ 新增活動 New Event）、`manage-events-btn`（管理活動 Manage）、`manage-tasks-btn`（任務管理 Tasks）、`manage-groups-btn`（群組 Groups）、`manage-flows-btn`（流程表 Flow Sheets）、`manage-home-btn`（群聖家園連結 Home Link）、`manage-calendar-btn`（行事曆 Calendar）、`manage-trains-btn`（🚆 火車時刻 Train Schedule）、`manage-saints-btn`（🕯 仙佛紀念日 Saint Days）、`manage-profiles-btn`（成員資料 Member Profiles）、`manage-admin-roles-btn`（管理員角色 Admin Roles）、`manage-perms-btn`（管理者權限 Admin Permissions）、`manage-altars-btn`（⛩️ 壇 Altars（天廚／佛堂／庶務／住壇））、`manage-carpool-btn`（🚗 共乘 Carpool）、`manage-lodging-btn`（🏠 住宿 Lodging）、`manage-meetings-btn`（🗣️ 溝通共識 Meetings）、`manage-event-admins-btn`（管理 Manage）、`manage-events-close-btn`（關閉）、`manage-job-admins-btn`（管理 Manage）、`new-template-btn`（＋ 新增工作範本 New Template）、`manage-flow-admins-btn`（管理 Manage）、`new-flow-btn`（＋ 新增流程表 New Flow Sheet）、`manage-car-managers-btn`（管理 Manage）、`manage-lodging-managers-btn`（管理 Manage）、`manage-meeting-admins-btn`（會議管理員 Meeting Admins）
 
-- Dashboard 直接讀寫的資料表（走 Supabase RLS）：`admin_roles`, `ride_requests`, `lodging_requests`, `events`, `csv_export_templates`, `train_schedule`, `registrations`, `event_groups`, `event_admins`, `users`, `altar_manager_teams`, `altar_team_members`, `altars`, `user_profiles`, `family_members`, `calendar_entries`, `task_instances`, `task_templates`, `task_job_presets`, `liff_apps`, `car_manager_admins`, `car_trips`, `driver_profiles`, `lodging_manager_admins`, `meeting_admins`, `lodging_offers`, `host_profiles`, `task_groups`, `task_group_members`, `altar_team_rules`, `altar_team_rule_rows`, `altar_team_handover_items`, `altar_team_swaps`, `activity_flows`, `activity_flow_items`, `activity_flow_groups`, `activity_flow_presets`, `activity_flow_admins`, `task_subtask_templates`, `task_template_groups`, `task_assignments`, `task_subtask_completions`, `group_systems`, `task_job_admins`
+- Dashboard 直接讀寫的資料表（走 Supabase RLS）：`admin_roles`, `ride_requests`, `lodging_requests`, `events`, `csv_export_templates`, `train_schedule`, `registrations`, `event_groups`, `event_admins`, `users`, `altar_manager_teams`, `altar_team_members`, `altars`, `user_profiles`, `family_members`, `calendar_entries`, `task_instances`, `task_templates`, `task_job_presets`, `liff_apps`, `car_manager_admins`, `car_trips`, `driver_profiles`, `lodging_manager_admins`, `meeting_types`, `task_groups`, `meeting_instances`, `meeting_attendance`, `meeting_action_items`, `meeting_admins`, `lodging_offers`, `host_profiles`, `task_group_members`, `altar_team_rules`, `altar_team_rule_rows`, `altar_team_handover_items`, `altar_team_swaps`, `activity_flows`, `activity_flow_items`, `activity_flow_groups`, `activity_flow_presets`, `activity_flow_admins`, `task_subtask_templates`, `task_template_groups`, `task_assignments`, `task_subtask_completions`, `group_systems`, `task_job_admins`
 
 - Dashboard 呼叫的 Edge Function：`admin-roles-api`, `create-liff-app`
 
@@ -454,11 +443,11 @@
 | `lodging_manager_admins` | delete、insert | — | 只有 Dashboard 能寫 |
 | `lodging_offers` | delete、update | delete、insert、update (lodging-api) |  |
 | `lodging_requests` | delete、update | delete、insert、update (lodging-api) |  |
-| `meeting_action_items` | — | delete、insert、update (meeting-api) | 只有 LIFF 能寫 |
+| `meeting_action_items` | delete、insert、update | delete、insert、update (meeting-api) |  |
 | `meeting_admins` | delete、insert | — | 只有 Dashboard 能寫 |
-| `meeting_attendance` | — | update (meeting-api) | 只有 LIFF 能寫 |
-| `meeting_instances` | — | update (meeting-api) | 只有 LIFF 能寫 |
-| `meeting_types` | — | delete、insert、update (meeting-api) | 只有 LIFF 能寫 |
+| `meeting_attendance` | update | update (meeting-api) |  |
+| `meeting_instances` | update | update (meeting-api) |  |
+| `meeting_types` | delete、insert、update | delete、insert、update (meeting-api) |  |
 | `registrations` | delete、update | delete、insert、update (events-admin-api, registrant-api) |  |
 | `ride_requests` | delete、update | delete、insert、update (carpool-api) |  |
 | `task_assignments` | insert、update | insert、update (tasks-api) |  |
@@ -475,4 +464,4 @@
 | `user_profiles` | — | upsert (profile-api) | 只有 LIFF 能寫 |
 | `users` | — | delete、update、upsert (altar-team-api, carpool-api, events-admin-api, flow-admin-api, home-api, kitchen-api, lodging-api, meeting-api, profile-api, registrant-api, tasks-admin-api, tasks-api) | 只有 LIFF 能寫 |
 
-_產生時間：2026-10-09_
+_產生時間：2026-10-10_
