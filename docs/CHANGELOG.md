@@ -6,6 +6,12 @@
 ## [未發佈]
 （新的變更先寫這裡）
 
+## 2026.10.12-2　GitHub Actions 加固
+- ⚙ 兩個 workflow 明確設定權限：`deploy-edge-function.yml` 只給 `contents: read`，`dispatch-daily.yml` 不給任何權限；checkout 不保留 git 憑證。
+- ⚙ 第三方 action 由浮動標籤改為固定 commit SHA（`actions/checkout` v4、`supabase/setup-cli` v1），避免標籤被改指向惡意程式碼。
+- **無 SQL**。要推 `.github/workflows/` 兩個檔（建議和 `notifications-v1` 一起推；兩者都改了 deploy workflow，以這份為準）。
+- 另外請在 repo 的 Settings → Actions → General 把 Workflow permissions 設為唯讀。
+
 ## 2026.10.12-1　LINE 通知整合（SQL 64）
 - ⚙ 四種自動通知，**預設開啟**：① 活動開始報名（建立並啟用、或之後改為啟用時推送，只推給活動指定群組的成員，公開活動不推）；② 截止報名前一天（今天或明天截止，推給活動群組裡**尚未報名**的成員）；③ 仙佛紀念日前 N 天；④ 農曆初一、十五前 N 天（③④ 預設 2 天，對象為在「LINE 通知」設定勾選的群組，沒勾＝不推）。
 - 🖥📱 每個活動有兩個勾選框「開放報名時通知」「截止前一天提醒」（預設勾選），Dashboard 與 LIFF 活動管理都有。

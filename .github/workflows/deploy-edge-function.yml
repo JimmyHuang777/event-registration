@@ -25,12 +25,18 @@ on:
       - 'supabase/functions/dispatch-run/**'
       - 'supabase/functions/_shared/**'
 
+# 預設只給唯讀權限；部署用的是 SUPABASE_ACCESS_TOKEN，不需要寫入 repo。
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@50fbc622fc4ef5163becd7fab6573eac35f8462e # v1
         with:
           version: latest
 

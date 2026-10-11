@@ -7,6 +7,8 @@ on:
     - cron: '0 22 * * *'
   workflow_dispatch:
 
+permissions: {}   # 這個流程只呼叫 Supabase，不需要任何 GitHub 權限
+
 jobs:
   dispatch:
     runs-on: ubuntu-latest
