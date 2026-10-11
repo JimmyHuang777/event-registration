@@ -23,6 +23,7 @@ on:
       - 'supabase/functions/calendar-api/**'
       - 'supabase/functions/altar-team-api/**'
       - 'supabase/functions/dispatch-run/**'
+      - 'supabase/functions/_shared/**'
 
 jobs:
   deploy:

@@ -43,6 +43,7 @@
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifyEventOpened } from "../_shared/line.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -181,7 +182,7 @@ serve(async (req) => {
       case "list_events": {
         let evQuery = supabase
           .from("events")
-          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging, registration_deadline")
+          .select("id, name, slug, event_date, location, description, form_schema, is_active, liff_id, is_featured, altar_id, offers_transport, offers_lodging, registration_deadline, notify_on_open, notify_before_deadline")
           .order("event_date", { ascending: false });
         if (!isGlobalAdmin) evQuery = evQuery.in("altar_id", managedAltarIds);
         const { data: events, error } = await evQuery;
@@ -253,6 +254,8 @@ serve(async (req) => {
         if ("altar_id" in body) extras.altar_id = body.altar_id || null;
         if ("offers_transport" in body) extras.offers_transport = !!body.offers_transport;
         if ("offers_lodging" in body) extras.offers_lodging = !!body.offers_lodging;
+        if ("notify_on_open" in body) extras.notify_on_open = !!body.notify_on_open;
+        if ("notify_before_deadline" in body) extras.notify_before_deadline = !!body.notify_before_deadline;
         if ("registration_deadline" in body) {
           const dl = body.registration_deadline;
           if (dl && Number.isNaN(Date.parse(dl))) return json({ error: "報名截止時間格式不正確。" }, 400);
@@ -285,7 +288,11 @@ serve(async (req) => {
 
         await syncEventGroups(newEvent.id, groupIds);
 
-        return json({ ok: true, event: newEvent });
+        // 開始報名通知（預設開啟；失敗不影響建立，結果記錄在 line_push_log）
+        let notify: unknown = null;
+        try { notify = await notifyEventOpened(supabase, newEvent.id); } catch (e) { console.error(e); }
+
+        return json({ ok: true, event: newEvent, notify });
       }
 
       // ---- Registrations of one event (view + check-in) ----
@@ -328,7 +335,9 @@ serve(async (req) => {
         if (!id) return json({ error: "Missing id." }, 400);
         const { error } = await supabase.from("events").update({ is_active: !!is_active }).eq("id", id);
         if (error) return json({ error: error.message }, 400);
-        return json({ ok: true });
+        let notify: unknown = null;
+        if (is_active) { try { notify = await notifyEventOpened(supabase, id); } catch (e) { console.error(e); } }
+        return json({ ok: true, notify });
       }
 
       // ---- Delete an event ----

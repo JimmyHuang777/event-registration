@@ -14,17 +14,17 @@
 // Actions: run { dry_run?: boolean, today?: 'YYYY-MM-DD' }
 //   dry_run = true → returns what WOULD be dispatched, writes nothing.
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DISPATCH_CRON_SECRET,
-//      LINE_CHANNEL_ACCESS_TOKEN (optional; push silently skipped if unset).
+//      LINE_CHANNEL_ACCESS_TOKEN (optional; if unset the push is logged as "no_token" and shown on the Dashboard).
 // Deployed with --no-verify-jwt.
 // =========================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fmtTaipei, getHomeLink, groupMemberLineIds, notifyEventOpened, pushLogged, refreshQuotaStatus } from "../_shared/line.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("DISPATCH_CRON_SECRET") || "";
-const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN");
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 const CORS_HEADERS = {
@@ -51,23 +51,6 @@ function lunarOf(date: string): { day: number; label: string } | null {
   const day = parseInt(p.day, 10), mo = parseInt(p.month, 10);
   if (!(mo >= 1 && mo <= 12) || !(day >= 1 && day <= 30)) return null;
   return { day, label: (/bis/.test(p.month) ? "閏" : "") + LUNAR_MONTH_NAME[mo - 1] + "月" + (day === 1 ? "初一" : day === 15 ? "十五" : String(day)) };
-}
-
-async function pushLine(lineUserIds: string[], text: string): Promise<number> {
-  if (!LINE_CHANNEL_ACCESS_TOKEN || lineUserIds.length === 0) return 0;
-  let sent = 0;
-  for (let i = 0; i < lineUserIds.length; i += 500) {
-    const chunk = lineUserIds.slice(i, i + 500);
-    try {
-      const r = await fetch("https://api.line.me/v2/bot/message/multicast", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
-        body: JSON.stringify({ to: chunk, messages: [{ type: "text", text: text.slice(0, 5000) }] }),
-      });
-      if (r.ok) sent += chunk.length;
-    } catch (_e) { /* best-effort */ }
-  }
-  return sent;
 }
 
 // Constant-time string compare (avoid leaking the secret through timing).
@@ -109,6 +92,7 @@ async function dispatchOne(hit: Hit, homeLink: string | null): Promise<{ event_i
   const dateLabel = hit.date.slice(5).replace("-", "/");
   let eventId: string | null = null, slug: string | null = null;
   const lines: string[] = [];
+  const notifyGroups = new Set<string>([...(rule.event_group_ids || [])]);
 
   // 1) registration form = copy of the template event
   if (rule.template_event_id) {
@@ -136,13 +120,13 @@ async function dispatchOne(hit: Hit, homeLink: string | null): Promise<{ event_i
         gids = (tg || []).map((r: any) => r.group_id);
       }
       if (gids.length) await supabase.from("event_groups").insert(gids.map((g) => ({ event_id: eventId, group_id: g })));
+      gids.forEach((g) => notifyGroups.add(g)); // also notify the groups inherited from the template event
       lines.push(`📝 報名：${hit.title}`);
     }
   }
 
   // 2) jobs from presets
   const templateIds: string[] = [];
-  const notifyGroups = new Set<string>([...(rule.event_group_ids || [])]);
   if ((rule.preset_ids || []).length) {
     const { data: presets } = await supabase.from("task_job_presets").select("*").in("id", rule.preset_ids);
     for (const p of presets || []) {
@@ -165,19 +149,97 @@ async function dispatchOne(hit: Hit, homeLink: string | null): Promise<{ event_i
   }
   (rule.group_ids || []).forEach((g: string) => notifyGroups.add(g));
 
-  // 3) LINE push to the groups' members
+  // 3) LINE push to the groups' members (shared helper: quota check, logging, Dashboard warning)
   let notified = 0;
-  if (rule.notify && notifyGroups.size) {
-    const { data: gm } = await supabase.from("task_group_members").select("user_id").in("group_id", [...notifyGroups]);
-    const uids = [...new Set((gm || []).map((r: any) => r.user_id))];
-    if (uids.length) {
-      const { data: us } = await supabase.from("users").select("line_user_id").in("id", uids);
-      const ids = [...new Set((us || []).map((u: any) => u.line_user_id).filter(Boolean))] as string[];
+  const notes: string[] = [];
+  if (rule.notify) {
+    if (!notifyGroups.size) {
+      notes.push("沒有可通知的群組（報名表沿用範本時範本沒有群組，且未指定派工群組）");
+    } else {
+      const ids = await groupMemberLineIds(supabase, [...notifyGroups]);
       const text = `📣 ${hit.title}（${dateLabel}）\n${lines.join("\n")}${homeLink ? `\n\n請開啟：${homeLink}` : ""}`;
-      notified = await pushLine(ids, text);
+      const r = await pushLogged(supabase, { kind: "dispatch", ref: hit.key, title: hit.title, userIds: ids, text });
+      notified = r.sent;
+      if (r.status !== "sent") notes.push(r.message);
     }
   }
-  return { event_id: eventId, template_ids: templateIds, notified, summary: lines.join("；") || "（無內容）" };
+  const summary = (lines.join("；") || "（無內容）") + (notes.length ? "　⚠ 通知：" + notes.join("；") : "");
+  return { event_id: eventId, template_ids: templateIds, notified, summary };
+}
+
+// ---------- 提醒：截止前一天、仙佛紀念日、初一十五 ----------
+async function loggedKeys(keys: string[]): Promise<Set<string>> {
+  if (!keys.length) return new Set();
+  const { data } = await supabase.from("line_push_log").select("dedupe_key").in("dedupe_key", keys);
+  return new Set((data || []).map((r: any) => r.dedupe_key as string));
+}
+
+async function runReminders(today: string, dry: boolean): Promise<any[]> {
+  const out: any[] = [];
+  const link = dry ? null : await getHomeLink(supabase);
+  const tail = link ? `\n\n請開啟：${link}` : "";
+  const md = (d: string) => `${parseInt(d.slice(5, 7), 10)}/${parseInt(d.slice(8, 10), 10)}`;
+  const send = async (kind: string, key: string, title: string, ids: string[], text: string) => {
+    if (dry) { out.push({ kind, key, title, recipients: ids.length, preview: true }); return; }
+    const r = await pushLogged(supabase, { kind, ref: key, title, userIds: ids, text, dedupeKey: `${kind}:${key}` });
+    if (r.status !== "duplicate") out.push({ kind, key, title, recipients: r.recipients, sent: r.sent, status: r.status, message: r.message });
+  };
+
+  // 1) 截止報名前一天：活動群組裡「尚未報名」的成員（今天或明天截止、截止時間還沒到）
+  const { data: evs } = await supabase.from("events").select("id, name, registration_deadline")
+    .eq("is_active", true).eq("notify_before_deadline", true).not("registration_deadline", "is", null)
+    .gt("registration_deadline", new Date().toISOString());
+  const dueEvs = (evs || []).filter((e: any) => {
+    const n = daysBetween(today, new Date(Date.parse(e.registration_deadline) + 8 * 3600 * 1000).toISOString().slice(0, 10));
+    return n >= 0 && n <= 1;
+  });
+  const seen1 = await loggedKeys(dueEvs.map((e: any) => `deadline_eve:${e.id}`));
+  for (const e of dueEvs) {
+    if (seen1.has(`deadline_eve:${e.id}`)) continue;
+    const { data: eg } = await supabase.from("event_groups").select("group_id").eq("event_id", e.id);
+    const gids = (eg || []).map((r: any) => r.group_id as string);
+    if (!gids.length) continue; // 公開活動不推
+    const registered = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data: rg } = await supabase.from("registrations").select("user_id").eq("event_id", e.id).neq("status", "cancelled").order("id").range(from, from + 999);
+      (rg || []).forEach((r: any) => r.user_id && registered.add(r.user_id));
+      if (!rg || rg.length < 1000) break;
+    }
+    const ids = await groupMemberLineIds(supabase, gids, registered);
+    const dlDay = new Date(Date.parse(e.registration_deadline) + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    const when = dlDay === today ? "今天" : "明天";
+    await send("deadline_eve", e.id, e.name, ids, `⏰ ${when}截止報名：${e.name}\n截止時間：${fmtTaipei(e.registration_deadline)}\n您尚未報名。${tail}`);
+  }
+
+  // 2) 仙佛紀念日、3) 農曆初一十五：依「通知設定」勾選的群組
+  const { data: settings } = await supabase.from("notify_settings").select("*");
+  const st = (k: string) => (settings || []).find((x: any) => x.kind === k);
+  const saint = st("saint_day"), lunar = st("lunar_day");
+  if (saint?.enabled && (saint.group_ids || []).length) {
+    const { data: es } = await supabase.from("calendar_entries").select("id, entry_date, title, notes")
+      .eq("category", "saint").gte("entry_date", addDays(today, 1)).lte("entry_date", addDays(today, saint.lead_days)).order("entry_date");
+    const seen = await loggedKeys((es || []).map((e: any) => `saint_day:${e.id}`));
+    const ids = (es || []).some((e: any) => !seen.has(`saint_day:${e.id}`)) ? await groupMemberLineIds(supabase, saint.group_ids) : [];
+    for (const e of es || []) {
+      if (seen.has(`saint_day:${e.id}`)) continue;
+      const n = daysBetween(today, e.entry_date);
+      await send("saint_day", e.id, e.title, ids, `🕯 ${n} 天後是${e.title}（${md(e.entry_date)}）${e.notes ? "\n" + String(e.notes).slice(0, 80) : ""}${tail}`);
+    }
+  }
+  if (lunar?.enabled && (lunar.group_ids || []).length) {
+    const cands: { date: string; label: string }[] = [];
+    for (let n = 1; n <= lunar.lead_days; n++) {
+      const d = addDays(today, n), l = lunarOf(d);
+      if (l && (l.day === 1 || l.day === 15)) cands.push({ date: d, label: l.label });
+    }
+    const seen = await loggedKeys(cands.map((c) => `lunar_day:${c.date}`));
+    const ids = cands.some((c) => !seen.has(`lunar_day:${c.date}`)) ? await groupMemberLineIds(supabase, lunar.group_ids) : [];
+    for (const c of cands) {
+      if (seen.has(`lunar_day:${c.date}`)) continue;
+      await send("lunar_day", c.date, c.label, ids, `🌙 ${daysBetween(today, c.date)} 天後是${c.label}（${md(c.date)}）${tail}`);
+    }
+  }
+  return out;
 }
 
 serve(async (req) => {
@@ -192,12 +254,24 @@ serve(async (req) => {
       const { data: role } = await supabase.from("admin_roles").select("id").eq("admin_user_id", u.user.id).eq("role", "super_admin").maybeSingle();
       if (!role) return json({ error: "Only Super Admins can run dispatch." }, 403);
     }
-    if (body.action && body.action !== "run") return json({ error: "Unknown action." }, 400);
+    const action = body.action || "run";
+    if (!["run", "quota", "notify_event"].includes(action)) return json({ error: "Unknown action." }, 400);
+    if (action === "quota") {
+      const q = await refreshQuotaStatus(supabase);
+      const { data: status } = await supabase.from("line_quota_status").select("*").eq("id", 1).maybeSingle();
+      return json({ ok: true, reachable: !!q, status });
+    }
+    if (action === "notify_event") {
+      if (!body.event_id) return json({ error: "Missing event_id." }, 400);
+      return json({ ok: true, result: await notifyEventOpened(supabase, body.event_id) });
+    }
 
     const dry = !!body.dry_run;
     const today = /^\d{4}-\d{2}-\d{2}$/.test(body.today || "") ? body.today : taipeiToday();
     const { data: rules } = await supabase.from("dispatch_rules").select("*").eq("is_active", true);
-    if (!rules || !rules.length) return json({ today, dry_run: dry, dispatched: [], skipped: 0 });
+    if (!dry) await refreshQuotaStatus(supabase); // 先更新額度，Dashboard 才看得到最新狀態
+    const reminders = await runReminders(today, dry).catch((e) => { console.error(e); return [{ error: "reminder failed" }]; });
+    if (!rules || !rules.length) return json({ today, dry_run: dry, dispatched: [], skipped: 0, reminders });
 
     const maxLead = Math.max(...rules.map((r: any) => r.lead_days));
     const { data: entries } = await supabase.from("calendar_entries")
@@ -213,8 +287,7 @@ serve(async (req) => {
 
     let homeLink: string | null = null;
     if (!dry && fresh.length) {
-      const { data: home } = await supabase.from("liff_apps").select("liff_id").eq("purpose", "home").maybeSingle();
-      if (home?.liff_id) homeLink = `https://liff.line.me/${home.liff_id}`;
+      homeLink = await getHomeLink(supabase);
     }
 
     const dispatched: any[] = [];
@@ -236,7 +309,7 @@ serve(async (req) => {
         dispatched.push({ ...base, error: String(err) });
       }
     }
-    return json({ today, dry_run: dry, dispatched, skipped: hits.length - fresh.length });
+    return json({ today, dry_run: dry, dispatched, skipped: hits.length - fresh.length, reminders });
   } catch (err) {
     console.error(err);
     return json({ error: "伺服器發生錯誤，請稍後再試。Server error." }, 500);

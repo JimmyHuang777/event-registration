@@ -236,6 +236,14 @@
           <input type="checkbox" id="f-lodging" style="width:18px; height:18px;"><span>🏠 提供住宿</span>
         </label>
       </div>
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:8px;">
+          <input type="checkbox" id="f-notify-open" style="width:18px; height:18px;" checked><span>📢 開放報名時 LINE 通知群組成員（公開活動不推）</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="f-notify-deadline" style="width:18px; height:18px;" checked><span>⏰ 截止前一天提醒尚未報名的人</span>
+        </label>
+      </div>
 
             <div class="field">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
@@ -767,6 +775,8 @@ function openForm(ev) {
   document.getElementById('f-featured').checked = !!(ev && ev.is_featured);
   document.getElementById('f-transport').checked = !!(ev && ev.offers_transport);
   document.getElementById('f-lodging').checked = !!(ev && ev.offers_lodging);
+  document.getElementById('f-notify-open').checked = ev ? ev.notify_on_open !== false : true;
+  document.getElementById('f-notify-deadline').checked = ev ? ev.notify_before_deadline !== false : true;
   fillAltarSelect(ev ? (ev.altar_id || '') : '');
   document.getElementById('f-slug').value = ev ? (ev.slug || '') : '';
   document.getElementById('f-slug').disabled = !!ev;
@@ -814,6 +824,8 @@ document.getElementById('form-submit-btn').addEventListener('click', async () =>
     is_featured: document.getElementById('f-featured').checked,
     offers_transport: document.getElementById('f-transport').checked,
     offers_lodging: document.getElementById('f-lodging').checked,
+    notify_on_open: document.getElementById('f-notify-open').checked,
+    notify_before_deadline: document.getElementById('f-notify-deadline').checked,
     altar_id: isGlobalAdmin ? altarValueForSave() : undefined,
     form_schema: collectFormSchema(),
     group_ids: [...document.querySelectorAll('#group-chip-list input:checked')].map(cb => cb.value),

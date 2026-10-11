@@ -13,6 +13,9 @@
 2. 在 workflow 的 `paths:` 加 `supabase/functions/<name>/**`
 3. 在 workflow 加對應的 Deploy step（`supabase functions deploy <name> --project-ref ixzvbyxhzttvnheivsoc --no-verify-jwt`）
 
+## 共用模組
+`supabase/functions/_shared/line.ts`（LINE 推送、額度、紀錄），被 dispatch-run、carpool-api、events-admin-api 引用；workflow 的 `paths:` 已含 `supabase/functions/_shared/**`。
+
 ## 目前的 Edge Function
 admin-roles-api、altar-team-api、calendar-api、carpool-api、create-liff-app、dispatch-run、events-admin-api、flow-admin-api、flow-api、home-api、kitchen-api、lodging-api、meeting-api、profile-api、registrant-api、tasks-admin-api、tasks-api
 
@@ -37,5 +40,11 @@ admin-roles-api、altar-team-api、calendar-api、carpool-api、create-liff-app�
 | 56 | altar-team-rules-handover-swaps | 各組工作細則（6W）、交接項目、整組對調 | ☐ |
 | 58 | train-timetable-ruisui | 瑞穗站完整時刻（去程 28 班、回程 28 班；第三方資料，需核對） | ☐ |
 | 57 | train-direction | 火車時刻分去程（south）／回程（north）；arrive_time 改可空 | ☐ |
+| 59 | auto-dispatch | 自動派工（dispatch_rules、dispatch_log） | ☐ |
+| 60 | registration-deadline | 活動報名截止（events.registration_deadline） | ☐ |
+| 61 | audit-queries | 唯讀稽核查詢（不改資料） | ☐ |
+| 62 | staff-and-csv-policies | 報到人員只能改報名狀態、匯出範本權限 | ☐ |
+| 63 | revoke-anon-rpc | 撤銷匿名呼叫內部函式 | ☐ |
+| 64 | line-notifications | LINE 通知：活動通知勾選、notify_settings、line_push_log、line_quota_status | ☐ |
 
 > 41–44 號在本文件建立時未列入清單，若有請補上。

@@ -204,9 +204,17 @@ serve(async (req) => {
 
       // ---- List upcoming task instances, with fill status ----
       case "list_tasks": {
-        const from = body.from_date || todayStr();
+        // Clamp the window: ensure_task_instances creates rows for every day in
+        // it, so an unbounded range from the client would bloat the database.
+        const today0 = todayStr();
+        const lo = new Date(Date.parse(today0 + "T00:00:00Z") - 60 * 86400000).toISOString().slice(0, 10);
+        const hi = new Date(Date.parse(today0 + "T00:00:00Z") + 400 * 86400000).toISOString().slice(0, 10);
+        let from = /^\d{4}-\d{2}-\d{2}$/.test(String(body.from_date || "")) ? String(body.from_date) : today0;
+        if (from < lo) from = lo;
+        if (from > hi) from = hi;
+        const spanDays = Math.min(180, Math.max(1, parseInt(String(body.days), 10) || 90));
         const toDate = new Date(from);
-        toDate.setDate(toDate.getDate() + (body.days || 90));
+        toDate.setDate(toDate.getDate() + spanDays);
         const to = toDate.toISOString().slice(0, 10);
 
         // Lazily generate any missing instances for this window —
